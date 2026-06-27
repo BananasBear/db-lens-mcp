@@ -20,7 +20,7 @@
 - 支持 SELECT EXPLAIN。
 - 支持 SQL 相关表识别和基础风险提示。
 - 工具只暴露项目需要的白名单能力，不提供通用 SQL 执行入口。
-- 提供一键安装脚本，作为普通用户本地安装主路径。
+- 提供远程一键安装脚本，作为普通用户本地安装主路径；源码安装只作为维护者路径。
 - 服务器部署和 Dockerfile 放到后续阶段。
 
 ## 一期开发阶段
@@ -78,8 +78,9 @@
 - MySQL / MariaDB 连接工厂和固定 `information_schema` 元数据查询已实现。
 - SQL 安全校验、单条 SELECT 限制、工具内部 EXPLAIN 已实现。
 - `inspect_query` 已组合返回表结构、索引、表统计、EXPLAIN、风险提示和 metadata 错误。
-- 本地安装脚本和 `db-lens mcp config` 客户端配置生成命令已实现。
+- 默认从 GitHub 安装源安装的远程安装脚本和 `db-lens mcp config` 客户端配置生成命令已实现。
 - 当前验证命令：`rtk sh -n scripts/install.sh`、`rtk python -m pytest`、`rtk python -m compileall src tests`。
+- 发布前必须验证 README 中的 raw GitHub 安装 URL 返回 `200 OK`。
 
 ## 暂不做
 
@@ -103,4 +104,5 @@
 ## 待确认
 
 - 第一版是否需要 Docker Compose 示例。
-- 安装脚本发布地址。
+- PyPI 包发布后是否把默认安装目标从 GitHub Git URL 切换为包名。
+- 仓库公开发布后，重新验证一行安装命令端到端可用。

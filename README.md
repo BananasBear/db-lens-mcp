@@ -6,16 +6,15 @@ Database context for AI-assisted backend development.
 
 ## Quick Start
 
-From the project directory:
+After release, users install with one command:
 
 ```bash
-./scripts/install.sh
-db-lens doctor
-db-lens config add
-db-lens mcp config
+curl -fsSL https://raw.githubusercontent.com/MagicPelican/db-lens-mcp/master/scripts/install.sh | sh
 ```
 
-Then paste the JSON printed by `db-lens mcp config` into your AI client's MCP settings.
+When the installer finishes, follow the `Next steps` printed in your terminal. It will show the exact `db-lens` command path to use, then guide you to add a database and generate the MCP config.
+
+Release requirement: the install URL above must return `200 OK` before this README is used as public user documentation.
 
 ## What The AI Can Use
 
@@ -37,19 +36,13 @@ Then paste the JSON printed by `db-lens mcp config` into your AI client's MCP se
 
 ## Install Notes
 
-The install script uses `uv tool install` and defaults to Python 3.11. If `uv` is missing, the script bootstraps it with:
+The install script installs `db-lens` with `uv tool install` and defaults to Python 3.11. If `uv` is missing, the script installs it automatically.
+
+If `db-lens` is not found after installation, open a new terminal or run:
 
 ```bash
-python3 -m pip install --user --upgrade uv
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 ```
-
-For release or custom installs, set `DB_LENS_INSTALL_TARGET`:
-
-```bash
-DB_LENS_INSTALL_TARGET=db-lens-mcp ./scripts/install.sh
-```
-
-`DB_LENS_INSTALL_TARGET` can be a package name, Git URL, or local path.
 
 ## Useful Commands
 
@@ -68,9 +61,12 @@ Server/team deployment is planned for a later phase. The current release path fo
 
 ## Development
 
-Developer-only commands:
+Source checkout install is only for maintainers and internal preview:
 
 ```bash
+git clone https://github.com/MagicPelican/db-lens-mcp.git
+cd db-lens-mcp
+DB_LENS_INSTALL_TARGET=. ./scripts/install.sh
 uv sync --extra dev
 uv run db-lens doctor
 uv run pytest
@@ -84,16 +80,15 @@ uv run pytest
 
 ## 快速开始
 
-在项目目录下执行：
+发布后，用户只需要复制并执行一条命令：
 
 ```bash
-./scripts/install.sh
-db-lens doctor
-db-lens config add
-db-lens mcp config
+curl -fsSL https://raw.githubusercontent.com/MagicPelican/db-lens-mcp/master/scripts/install.sh | sh
 ```
 
-然后把 `db-lens mcp config` 输出的 JSON 放到 AI 客户端的 MCP 配置中。
+安装完成后，按照终端里打印的 `Next steps` 继续操作。安装器会显示可以直接执行的 `db-lens` 命令路径，然后引导你配置数据库并生成 MCP 配置。
+
+发布要求：公开使用本文档前，上面的安装地址必须返回 `200 OK`。
 
 ## AI 可以使用的能力
 
@@ -125,3 +120,11 @@ db-lens mcp run
 ```
 
 当前版本主要支持本地 MCP stdio 使用；服务器/团队部署会在后续阶段支持。
+
+源码安装只面向维护者和内部预览：
+
+```bash
+git clone https://github.com/MagicPelican/db-lens-mcp.git
+cd db-lens-mcp
+DB_LENS_INSTALL_TARGET=. ./scripts/install.sh
+```

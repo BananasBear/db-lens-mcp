@@ -2,10 +2,10 @@
 set -eu
 
 APP_NAME="db-lens"
+DEFAULT_INSTALL_TARGET="git+https://github.com/MagicPelican/db-lens-mcp.git"
 PYTHON_VERSION="${DB_LENS_PYTHON_VERSION:-3.11}"
-INSTALL_TARGET="${DB_LENS_INSTALL_TARGET:-}"
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-PROJECT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+INSTALL_TARGET="${DB_LENS_INSTALL_TARGET:-$DEFAULT_INSTALL_TARGET}"
+DB_LENS_COMMAND="db-lens"
 
 info() {
   printf '%s\n' "$*"
@@ -20,46 +20,67 @@ need_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
-detect_target() {
-  if [ -n "$INSTALL_TARGET" ]; then
-    printf '%s\n' "$INSTALL_TARGET"
-    return
-  fi
-  if [ -f "$PROJECT_DIR/pyproject.toml" ] && grep -q 'name = "db-lens-mcp"' "$PROJECT_DIR/pyproject.toml"; then
-    printf '%s\n' "$PROJECT_DIR"
-    return
-  fi
-  printf 'db-lens-mcp\n'
-}
-
 install_uv_if_missing() {
   if need_command uv; then
     return
   fi
-  info "uv not found. Installing uv with Python user site..."
-  need_command python3 || fail "python3 is required to bootstrap uv."
-  python3 -m pip install --user --upgrade uv
+  info "uv not found. Installing uv..."
+  if need_command curl; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  elif need_command python3; then
+    python3 -m pip install --user --upgrade uv
+  else
+    fail "curl or python3 is required to install uv."
+  fi
   export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
   need_command uv || fail "uv was installed but is not on PATH. Add $HOME/.local/bin to PATH and retry."
 }
 
 install_db_lens() {
-  target="$(detect_target)"
-  info "Installing ${APP_NAME} from: ${target}"
-  uv tool install --python "$PYTHON_VERSION" --force "$target"
+  info "Installing ${APP_NAME}..."
+  uv tool install --python "$PYTHON_VERSION" --force "$INSTALL_TARGET"
+  DB_LENS_COMMAND="$(resolve_db_lens_command)"
+}
+
+resolve_db_lens_command() {
+  if need_command db-lens; then
+    command -v db-lens
+    return
+  fi
+  if [ -n "${UV_TOOL_BIN_DIR:-}" ] && [ -x "$UV_TOOL_BIN_DIR/db-lens" ]; then
+    printf '%s\n' "$UV_TOOL_BIN_DIR/db-lens"
+    return
+  fi
+  for candidate in "$HOME/.local/bin/db-lens" "$HOME/.cargo/bin/db-lens"; do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+  fail "db-lens was installed, but its executable was not found. Add uv's tool directory to PATH and retry: export PATH=\"\$HOME/.local/bin:\$HOME/.cargo/bin:\$PATH\""
 }
 
 print_next_steps() {
-  cat <<'EOF'
+  cat <<EOF
 
 db-lens is installed.
 
 Next steps:
-  1. db-lens doctor
-  2. db-lens config add
-  3. db-lens mcp config
+  1. Check the installation:
+     $DB_LENS_COMMAND doctor
 
-Paste the JSON printed by `db-lens mcp config` into your AI client's MCP settings.
+  2. Add your database:
+     $DB_LENS_COMMAND config add
+
+  3. Generate MCP client config:
+     $DB_LENS_COMMAND mcp config
+
+Paste the JSON printed by "$DB_LENS_COMMAND mcp config" into your AI client's MCP settings.
+EOF
+  cat <<'EOF'
+
+If `db-lens` is not found in a new terminal, add uv's tool directory to PATH:
+  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 EOF
 }
 

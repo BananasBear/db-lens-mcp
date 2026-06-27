@@ -12,24 +12,35 @@
 - 配置数据库时使用 `db-lens config add` 交互式向导。
 - 使用 `db-lens mcp config` 生成 AI 客户端 MCP 配置。
 
-典型流程：
+发布后的用户流程：
 
 ```bash
-./scripts/install.sh
-db-lens doctor
-db-lens config add
-db-lens mcp config
+curl -fsSL https://raw.githubusercontent.com/MagicPelican/db-lens-mcp/master/scripts/install.sh | sh
 ```
 
-用户不需要理解 Python 版本、虚拟环境或依赖管理。安装脚本负责检测并准备运行时。
+用户只复制这一条安装命令。安装完成后，安装脚本打印可直接执行的 `db-lens` 命令路径和下一步：
+
+1. `db-lens doctor`
+2. `db-lens config add`
+3. `db-lens mcp config`
+
+用户不需要理解 Python 版本、虚拟环境或依赖管理。安装脚本负责检测并准备运行时，并处理当前 shell PATH 可能未刷新的提示。
+
+发布门禁：
+
+- `scripts/install.sh` 必须已推送到公开可访问地址。
+- README 中的 raw GitHub 安装 URL 必须返回 `200 OK`。
+- 安装脚本默认安装源必须可访问。
+- 安装完成后的 `Next steps` 必须打印当前终端可直接执行的 `db-lens` 命令路径。
 
 ## 开发者备用路径
 
 面向懂命令行的开发者，可保留：
 
 ```bash
-uvx db-lens-mcp
-pipx install db-lens-mcp
+git clone https://github.com/MagicPelican/db-lens-mcp.git
+cd db-lens-mcp
+DB_LENS_INSTALL_TARGET=. ./scripts/install.sh
 ```
 
 这不是普通用户主路径。
@@ -37,10 +48,11 @@ pipx install db-lens-mcp
 ## 安装脚本职责
 
 - 检测是否已有 `uv`。
-- 没有 `uv` 时，通过 Python user site 安装 `uv`。
-- 使用 `uv tool install` 安装 `db-lens-mcp`。
-- 本地仓库执行时默认安装当前目录。
+- 没有 `uv` 时，优先通过官方安装脚本安装 `uv`，无 `curl` 时再尝试 Python user site。
+- 使用 `uv tool install` 安装默认 GitHub 发布源 `git+https://github.com/MagicPelican/db-lens-mcp.git`；后续 PyPI 发布后可切换为包名。
+- 默认不得把当前源码目录作为用户安装目标。
 - 支持通过 `DB_LENS_INSTALL_TARGET` 指定包名、Git 地址或本地目录。
+- 安装完成后输出可执行的 `db-lens` 路径，避免用户当前 shell PATH 未刷新。
 - 输出 `db-lens doctor`、`db-lens config add`、`db-lens mcp config` 作为下一步。
 - 不要求用户手动选择 Python 版本。
 
