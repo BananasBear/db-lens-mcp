@@ -1,0 +1,47 @@
+[project]
+name = "db-lens-mcp"
+version = "0.1.0"
+description = "Database context MCP server for backend AI development."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "db-lens-mcp contributors" }
+]
+dependencies = [
+  "cryptography>=42,<46",
+  "mcp>=1.27,<2",
+  "pydantic>=2.7,<3",
+  "pymysql>=1.1,<2",
+  "sqlglot>=25,<29",
+  "typer>=0.12,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "pytest-cov>=5,<8",
+  "ruff>=0.6,<1",
+]
+
+[project.scripts]
+db-lens = "db_lens_mcp.cli.main:app"
+db-lens-mcp = "db_lens_mcp.cli.main:app"
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/db_lens_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
