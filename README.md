@@ -12,7 +12,13 @@ After release, users install with one command:
 curl -fsSL https://raw.githubusercontent.com/MagicPelican/db-lens-mcp/master/scripts/install.sh | sh
 ```
 
-When the installer finishes, follow the `Next steps` printed in your terminal. It will show the exact `db-lens` command path to use, then guide you to add a database and generate the MCP config.
+When the installer finishes, follow the `Next steps` printed in your terminal. The normal flow is:
+
+```bash
+db-lens help
+db-lens config add
+db-lens mcp install-codex
+```
 
 Release requirement: the install URL above must return `200 OK` before this README is used as public user documentation.
 
@@ -51,8 +57,10 @@ db-lens doctor
 db-lens config add
 db-lens config list
 db-lens config test local-dev
+db-lens mcp install-codex
+db-lens mcp config --client codex
 db-lens mcp config
-db-lens mcp run
+db-lens mcp run  # manual MCP server start, mainly for troubleshooting
 ```
 
 ## Server Deployment
@@ -86,7 +94,13 @@ uv run pytest
 curl -fsSL https://raw.githubusercontent.com/MagicPelican/db-lens-mcp/master/scripts/install.sh | sh
 ```
 
-安装完成后，按照终端里打印的 `Next steps` 继续操作。安装器会显示可以直接执行的 `db-lens` 命令路径，然后引导你配置数据库并生成 MCP 配置。
+安装完成后，按照终端里打印的 `Next steps` 继续操作。正常流程是：
+
+```bash
+db-lens help
+db-lens config add
+db-lens mcp install-codex
+```
 
 发布要求：公开使用本文档前，上面的安装地址必须返回 `200 OK`。
 
@@ -115,8 +129,10 @@ db-lens doctor
 db-lens config add
 db-lens config list
 db-lens config test local-dev
+db-lens mcp install-codex
+db-lens mcp config --client codex
 db-lens mcp config
-db-lens mcp run
+db-lens mcp run  # 手动启动 MCP server，主要用于排查问题
 ```
 
 当前版本主要支持本地 MCP stdio 使用；服务器/团队部署会在后续阶段支持。

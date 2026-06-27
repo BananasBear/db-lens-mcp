@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
+from pathlib import Path
 
 import typer
 
@@ -34,6 +36,41 @@ def main(
     """Configure shared CLI behavior."""
 
     configure_logging(verbose)
+
+
+@app.command()
+def help() -> None:
+    """Show the common db-lens workflow."""
+
+    typer.echo(
+        "\n".join(
+            [
+                "db-lens common commands",
+                "",
+                "1. Check installation:",
+                "   db-lens doctor",
+                "",
+                "2. Add a database profile:",
+                "   db-lens config add",
+                "",
+                "3. Verify the profile:",
+                "   db-lens config list",
+                "   db-lens config test <profile>",
+                "",
+                "4. Connect an AI client:",
+                "   db-lens mcp install-codex",
+                "",
+                "5. Print config instead of installing it:",
+                "   db-lens mcp config",
+                "   db-lens mcp config --client codex",
+                "",
+                "More help:",
+                "   db-lens --help",
+                "   db-lens config --help",
+                "   db-lens mcp --help",
+            ]
+        )
+    )
 
 
 @app.command()
@@ -120,7 +157,7 @@ def config_add(
         )
         raise typer.Exit(code=1) from exc
     typer.echo("database: ok")
-    typer.echo("Next: db-lens mcp run")
+    typer.echo("Next: db-lens mcp install-codex")
 
 
 @config_app.command("list")
@@ -172,6 +209,7 @@ def mcp_run() -> None:
 def mcp_config(
     server_name: str = typer.Option("db-lens", help="MCP server name in the client config."),
     command: str = typer.Option("", help="Command used by the MCP client. Defaults to db-lens."),
+    client: str = typer.Option("json", help="Output format: json or codex."),
     config_file: str = typer.Option(
         "",
         help="Optional DB_LENS_CONFIG_FILE value for clients that need an explicit path.",
@@ -180,6 +218,12 @@ def mcp_config(
     """Print a copy-paste MCP client configuration snippet."""
 
     command_value = command.strip() or _resolve_db_lens_command()
+    client_value = client.strip().lower()
+    if client_value == "codex":
+        typer.echo(_codex_mcp_block(server_name, command_value, config_file.strip()))
+        return
+    if client_value != "json":
+        raise typer.BadParameter("client must be json or codex.")
     server_config = {
         "command": command_value,
         "args": ["mcp", "run"],
@@ -187,6 +231,40 @@ def mcp_config(
     if config_file.strip():
         server_config["env"] = {"DB_LENS_CONFIG_FILE": config_file.strip()}
     typer.echo(json.dumps({"mcpServers": {server_name: server_config}}, indent=2))
+
+
+@mcp_app.command("install-codex")
+def mcp_install_codex(
+    server_name: str = typer.Option("db-lens", help="MCP server name in Codex."),
+    command: str = typer.Option("", help="Command used by Codex. Defaults to db-lens."),
+    codex_config: str = typer.Option(
+        "",
+        help="Codex config path. Defaults to ~/.codex/config.toml.",
+    ),
+    db_lens_config_file: str = typer.Option(
+        "",
+        help="Optional DB_LENS_CONFIG_FILE value to write into the Codex MCP server env.",
+    ),
+) -> None:
+    """Install db-lens into Codex config.toml."""
+
+    command_value = command.strip() or _resolve_db_lens_command()
+    config_path = Path(codex_config).expanduser() if codex_config.strip() else _codex_config_path()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    if config_path.exists():
+        backup_path = config_path.with_suffix(config_path.suffix + ".bak")
+        shutil.copy2(config_path, backup_path)
+    updated = _install_toml_block(
+        existing,
+        server_name,
+        _codex_mcp_block(server_name, command_value, db_lens_config_file.strip()),
+    )
+    config_path.write_text(updated, encoding="utf-8")
+    typer.echo(f"Codex MCP config updated: {config_path}")
+    if config_path.with_suffix(config_path.suffix + ".bak").exists():
+        typer.echo(f"Backup: {config_path.with_suffix(config_path.suffix + '.bak')}")
+    typer.echo("Restart Codex, then ask it to use db-lens.")
 
 
 def _require_value(name: str, value: str) -> None:
@@ -213,4 +291,61 @@ def _test_database_connection(profile: str | None) -> str:
 def _resolve_db_lens_command() -> str:
     """Return a command string that MCP clients can execute."""
 
-    return shutil.which("db-lens") or "db-lens"
+    resolved = shutil.which("db-lens")
+    if resolved:
+        return resolved
+    invoked = Path(sys.argv[0]).expanduser()
+    if invoked.is_absolute() and invoked.exists():
+        return str(invoked)
+    raise ConfigurationError(
+        "db-lens executable was not found on PATH. Rerun this command using the full "
+        "db-lens path printed by the installer, or pass --command /path/to/db-lens."
+    )
+
+
+def _codex_config_path() -> Path:
+    return Path.home() / ".codex" / "config.toml"
+
+
+def _codex_mcp_block(server_name: str, command: str, config_file: str = "") -> str:
+    lines = [
+        f"[mcp_servers.{server_name}]",
+        f"command = {_toml_string(command)}",
+        'args = ["mcp", "run"]',
+    ]
+    if config_file:
+        lines.extend(
+            [
+                "",
+                f"[mcp_servers.{server_name}.env]",
+                f"DB_LENS_CONFIG_FILE = {_toml_string(config_file)}",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(value)
+
+
+def _install_toml_block(existing: str, server_name: str, block: str) -> str:
+    table_names = {
+        f"mcp_servers.{server_name}",
+        f'mcp_servers."{server_name}"',
+    }
+    table_prefixes = {table + "." for table in table_names}
+    kept_lines: list[str] = []
+    skipping = False
+    for line in existing.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            table = stripped.strip("[]")
+            skipping = table in table_names or any(
+                table.startswith(prefix) for prefix in table_prefixes
+            )
+        if not skipping:
+            kept_lines.append(line)
+    content = "\n".join(kept_lines).rstrip()
+    if content:
+        return content + "\n\n" + block
+    return block

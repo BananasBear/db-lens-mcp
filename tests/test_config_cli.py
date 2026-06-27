@@ -69,6 +69,7 @@ def test_config_add_list_and_test_use_encrypted_password(tmp_path: Path, monkeyp
     assert config_path.exists()
     assert "db-password" not in config_path.read_text(encoding="utf-8")
     assert "database: ok" in add_result.stdout
+    assert "Next: db-lens mcp install-codex" in add_result.stdout
     assert list_result.exit_code == 0
     assert "* local-dev: mysql://readonly@127.0.0.1:3306/app_db" in list_result.stdout
     assert "db-password" not in list_result.stdout

@@ -33,7 +33,7 @@ db-lens config add
 8. 自动生成或复用 master key。
 9. 加密 password 并写入 config.toml。
 10. 自动执行一次连接测试。
-11. 输出下一步命令，用户通过 `db-lens mcp config` 生成 MCP 客户端配置示例。
+11. 输出下一步命令，用户优先通过 `db-lens mcp install-codex` 自动写入 Codex MCP 配置；`db-lens mcp config` 仅作为手动配置备用。
 
 ### 查看配置
 

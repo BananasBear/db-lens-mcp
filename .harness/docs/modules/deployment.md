@@ -10,7 +10,7 @@
 
 - 使用一键安装脚本安装 `db-lens` 命令。
 - 配置数据库时使用 `db-lens config add` 交互式向导。
-- 使用 `db-lens mcp config` 生成 AI 客户端 MCP 配置。
+- 使用 `db-lens mcp install-codex` 自动写入 Codex MCP 配置。
 
 发布后的用户流程：
 
@@ -21,8 +21,9 @@ curl -fsSL https://raw.githubusercontent.com/MagicPelican/db-lens-mcp/master/scr
 用户只复制这一条安装命令。安装完成后，安装脚本打印可直接执行的 `db-lens` 命令路径和下一步：
 
 1. `db-lens doctor`
-2. `db-lens config add`
-3. `db-lens mcp config`
+2. `db-lens help`
+3. `db-lens config add`
+4. `db-lens mcp install-codex`
 
 用户不需要理解 Python 版本、虚拟环境或依赖管理。安装脚本负责检测并准备运行时，并处理当前 shell PATH 可能未刷新的提示。
 
@@ -53,7 +54,7 @@ DB_LENS_INSTALL_TARGET=. ./scripts/install.sh
 - 默认不得把当前源码目录作为用户安装目标。
 - 支持通过 `DB_LENS_INSTALL_TARGET` 指定包名、Git 地址或本地目录。
 - 安装完成后输出可执行的 `db-lens` 路径，避免用户当前 shell PATH 未刷新。
-- 输出 `db-lens doctor`、`db-lens config add`、`db-lens mcp config` 作为下一步。
+- 输出 `db-lens doctor`、`db-lens help`、`db-lens config add`、`db-lens mcp install-codex` 作为下一步。
 - 不要求用户手动选择 Python 版本。
 
 ## Docker 基础预留

@@ -69,13 +69,16 @@ Next steps:
   1. Check the installation:
      $DB_LENS_COMMAND doctor
 
-  2. Add your database:
+  2. See available commands:
+     $DB_LENS_COMMAND help
+
+  3. Add your database:
      $DB_LENS_COMMAND config add
 
-  3. Generate MCP client config:
-     $DB_LENS_COMMAND mcp config
+  4. Connect Codex:
+     $DB_LENS_COMMAND mcp install-codex
 
-Paste the JSON printed by "$DB_LENS_COMMAND mcp config" into your AI client's MCP settings.
+Restart Codex after install-codex completes.
 EOF
   cat <<'EOF'
 
