@@ -33,6 +33,16 @@ class DatabaseInspectionService:
 
     metadata_reader: MetadataReader
 
+    def list_databases(self, profile: str) -> list[str]:
+        """Return visible databases for a profile."""
+
+        return self.metadata_reader.list_databases(profile)
+
+    def list_tables(self, profile: str, database: str, keyword: str | None = None) -> list[dict]:
+        """Return tables for a database."""
+
+        return self.metadata_reader.list_tables(profile, database, keyword)
+
     def describe_table(self, profile: str, database: str, table: str) -> TableSchema:
         """Return schema metadata for a table."""
 
@@ -42,3 +52,8 @@ class DatabaseInspectionService:
         """Return index metadata for a table."""
 
         return self.metadata_reader.list_indexes(profile, database, table)
+
+    def get_table_stats(self, profile: str, database: str, table: str) -> TableStats:
+        """Return table statistics."""
+
+        return self.metadata_reader.get_table_stats(profile, database, table)

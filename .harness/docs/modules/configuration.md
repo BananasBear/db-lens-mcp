@@ -33,7 +33,7 @@ db-lens config add
 8. 自动生成或复用 master key。
 9. 加密 password 并写入 config.toml。
 10. 自动执行一次连接测试。
-11. 输出 MCP 客户端配置示例和下一步命令。
+11. 输出下一步命令，用户通过 `db-lens mcp config` 生成 MCP 客户端配置示例。
 
 ### 查看配置
 
@@ -129,7 +129,6 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 
 - `DB_LENS_CONFIG_FILE`
 - `DB_LENS_MASTER_KEY`
-- `DB_LENS_PROFILE`
 
 ## 敏感信息规则
 
@@ -147,8 +146,8 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 - 一期不做 Vault / KMS / Secret Manager 集成。
 - 一期不做多用户配置权限模型。
 
-## 待确认
+## 已确认实现
 
-- 加密库选择，初步倾向 `cryptography`。
-- master key 编码格式和长度。
-- `config add` 是否支持非交互参数模式，便于自动化部署。
+- 加密库使用 `cryptography.Fernet`。
+- master key 默认保存到 `~/.db-lens/master.key`，也可通过 `DB_LENS_MASTER_KEY` 提供。
+- `config add` 支持交互式输入，也支持通过 CLI 参数非交互执行。

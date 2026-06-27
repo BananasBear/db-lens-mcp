@@ -206,8 +206,8 @@ P0 是一期重点打磨能力，P1 是支撑能力。
   "accepted": true,
   "query_type": "SELECT",
   "explain": {
-    "raw": [],
     "summary": {
+      "status": "ok",
       "tables": ["orders"],
       "access_types": ["ref"],
       "used_indexes": ["idx_user_created"],
@@ -240,17 +240,19 @@ P0 是一期重点打磨能力，P1 是支撑能力。
   "accepted": true,
   "query_type": "SELECT",
   "referenced_tables": ["orders"],
-  "tables": [
+  "table_context": [
     {
-      "name": "orders",
+      "database": "app_db",
+      "table": "orders",
       "columns": [],
       "indexes": [],
       "stats": {}
     }
   ],
+  "metadata_errors": [],
   "explain": {
-    "raw": [],
     "summary": {
+      "status": "ok",
       "tables": ["orders"],
       "access_types": ["ref"],
       "used_indexes": ["idx_user_created"],
@@ -268,6 +270,8 @@ P0 是一期重点打磨能力，P1 是支撑能力。
   "ai_summary": "该查询访问 orders 表，过滤字段为 user_id，排序字段为 created_at。当前执行计划显示使用 idx_user_created，预计扫描行数较低。"
 }
 ```
+
+如果某个表的元数据读取失败，`inspect_query` 仍会在 SQL 安全校验通过后继续尝试 EXPLAIN，并通过 `metadata_errors` 返回按表聚合的脱敏错误。
 
 ## 风险提示
 

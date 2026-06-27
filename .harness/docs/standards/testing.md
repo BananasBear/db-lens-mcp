@@ -12,11 +12,20 @@
 ## 测试分层
 
 - 单元测试覆盖解析、校验、配置、风险规则。
-- 集成测试通过容器数据库验证元数据和 EXPLAIN。
+- 当前单元测试使用 fake connection / monkeypatch 覆盖元数据和 EXPLAIN 路径，不依赖真实数据库。
+- 后续集成测试可通过容器数据库验证真实 MySQL/MariaDB 元数据和 EXPLAIN。
 - MCP 工具测试验证输入输出结构和错误处理。
+- 每个阶段完成后，用只读子代理按项目规则 review 新增代码，不使用外部 Code Review skill。
+
+## 当前验证命令
+
+```bash
+rtk sh -n scripts/install.sh
+rtk python -m pytest
+rtk python -m compileall src tests
+```
 
 ## 待确认
 
-- 测试框架。
 - 是否使用 Testcontainers 或 Docker Compose。
 - CI 环境是否可用数据库容器。

@@ -4,22 +4,45 @@
 
 一期部署以本地使用简单为主，满足需要即可，不做过度设计。服务器方向只提供 Docker 基础预留，不在一期实现完整团队服务。
 
-## 本地安装主路径
+## 本地用户主路径
 
 推荐路径：
 
-- 使用 `uvx db-lens-mcp` 临时运行。
-- 使用 `pipx install db-lens-mcp` 持久安装。
+- 使用一键安装脚本安装 `db-lens` 命令。
 - 配置数据库时使用 `db-lens config add` 交互式向导。
-- 启动本地 MCP 使用 `db-lens mcp run`。
+- 使用 `db-lens mcp config` 生成 AI 客户端 MCP 配置。
 
 典型流程：
 
 ```bash
-uvx db-lens-mcp
+./scripts/install.sh
+db-lens doctor
 db-lens config add
-db-lens mcp run
+db-lens mcp config
 ```
+
+用户不需要理解 Python 版本、虚拟环境或依赖管理。安装脚本负责检测并准备运行时。
+
+## 开发者备用路径
+
+面向懂命令行的开发者，可保留：
+
+```bash
+uvx db-lens-mcp
+pipx install db-lens-mcp
+```
+
+这不是普通用户主路径。
+
+## 安装脚本职责
+
+- 检测是否已有 `uv`。
+- 没有 `uv` 时，通过 Python user site 安装 `uv`。
+- 使用 `uv tool install` 安装 `db-lens-mcp`。
+- 本地仓库执行时默认安装当前目录。
+- 支持通过 `DB_LENS_INSTALL_TARGET` 指定包名、Git 地址或本地目录。
+- 输出 `db-lens doctor`、`db-lens config add`、`db-lens mcp config` 作为下一步。
+- 不要求用户手动选择 Python 版本。
 
 ## Docker 基础预留
 
@@ -46,4 +69,4 @@ db-lens mcp run
 
 - Docker 镜像基础镜像。
 - 第一版是否需要 Docker Compose 示例。
-- 第一版是否自动生成 AI 客户端配置。
+- 安装脚本发布地址。

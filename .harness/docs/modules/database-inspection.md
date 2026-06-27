@@ -6,7 +6,7 @@
 - Database Catalog：数据库列表和基础元信息。
 - Table Summary：表名、注释、行数估算、容量估算。
 - Table Schema：字段、类型、是否可空、默认值、主键、注释。
-- Index Summary：索引名、字段顺序、唯一性、索引类型、基数估算。
+- Index Summary：索引名、字段顺序、唯一性、索引类型、基数估算。基数来自 MySQL `information_schema.STATISTICS.CARDINALITY`，是估算值，不是精确统计。
 - Explain Request：用户提交的 SELECT SQL 和连接配置引用。
 - Explain Plan：数据库返回的执行计划。
 - Risk Hint：基于执行计划生成的基础风险提示。

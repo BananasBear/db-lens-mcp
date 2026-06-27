@@ -8,6 +8,8 @@
 
 > 本地安装后，用户通过一个交互式命令配置数据库，然后 AI 工具能通过 MCP 安全获取 MySQL 表结构、索引、表统计和 SELECT 执行计划。
 
+本地用户不需要理解 Python 版本、虚拟环境或依赖管理；这些细节优先由安装脚本屏蔽。Docker 和团队服务器部署放到后续阶段。
+
 ## MVP 范围
 
 - 支持 MySQL / MariaDB。
@@ -18,7 +20,8 @@
 - 支持 SELECT EXPLAIN。
 - 支持 SQL 相关表识别和基础风险提示。
 - 工具只暴露项目需要的白名单能力，不提供通用 SQL 执行入口。
-- 提供 Dockerfile，作为后续服务器部署的基础。
+- 提供一键安装脚本，作为普通用户本地安装主路径。
+- 服务器部署和 Dockerfile 放到后续阶段。
 
 ## 一期开发阶段
 
@@ -65,7 +68,18 @@
 - 配置加密单元测试。
 - MySQL 集成测试可选。
 - README 使用说明。
-- Dockerfile。
+- 一键安装脚本。
+- MCP 客户端配置生成命令。
+
+## 当前完成状态
+
+- 项目骨架、CLI、MCP stdio 入口已实现。
+- 本地 TOML 配置、`master.key`、Fernet 密码加密已实现。
+- MySQL / MariaDB 连接工厂和固定 `information_schema` 元数据查询已实现。
+- SQL 安全校验、单条 SELECT 限制、工具内部 EXPLAIN 已实现。
+- `inspect_query` 已组合返回表结构、索引、表统计、EXPLAIN、风险提示和 metadata 错误。
+- 本地安装脚本和 `db-lens mcp config` 客户端配置生成命令已实现。
+- 当前验证命令：`rtk sh -n scripts/install.sh`、`rtk python -m pytest`、`rtk python -m compileall src tests`。
 
 ## 暂不做
 
@@ -89,4 +103,4 @@
 ## 待确认
 
 - 第一版是否需要 Docker Compose 示例。
-- 第一版是否需要自动生成 AI 客户端配置。
+- 安装脚本发布地址。

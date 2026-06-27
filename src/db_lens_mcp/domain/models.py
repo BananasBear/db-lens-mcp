@@ -84,6 +84,7 @@ class TableStats:
 class ExplainSummary:
     """Normalized EXPLAIN highlights for first-phase risk rules."""
 
+    status: str = "ok"
     tables: list[str] = field(default_factory=list)
     access_types: list[str] = field(default_factory=list)
     used_indexes: list[str] = field(default_factory=list)
