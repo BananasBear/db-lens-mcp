@@ -55,6 +55,8 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 ```bash
 db-lens doctor
 db-lens config add
+db-lens config update local-dev
+db-lens config delete old-profile
 db-lens config list
 db-lens config test local-dev
 db-lens mcp install-codex
@@ -62,6 +64,8 @@ db-lens mcp config --client codex
 db-lens mcp config
 db-lens mcp run  # manual MCP server start, mainly for troubleshooting
 ```
+
+Interactive config commands support `--language zh` and `--language en`. When the flag is omitted, `config add`, interactive `config update`, and confirmation-based `config delete` will ask the user to choose a language first.
 
 ## Server Deployment
 
@@ -127,6 +131,8 @@ db-lens mcp install-codex
 ```bash
 db-lens doctor
 db-lens config add
+db-lens config update local-dev
+db-lens config delete old-profile
 db-lens config list
 db-lens config test local-dev
 db-lens mcp install-codex
@@ -134,6 +140,8 @@ db-lens mcp config --client codex
 db-lens mcp config
 db-lens mcp run  # 手动启动 MCP server，主要用于排查问题
 ```
+
+交互式配置命令支持 `--language zh` 和 `--language en`。如果不显式传入，`config add`、交互式 `config update` 和需要确认的 `config delete` 会先让用户选择语言。
 
 当前版本主要支持本地 MCP stdio 使用；服务器/团队部署会在后续阶段支持。
 

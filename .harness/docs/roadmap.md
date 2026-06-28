@@ -36,6 +36,8 @@
 ### 阶段 2：配置与加密
 
 - `config add`。
+- `config update`。
+- `config delete`。
 - `config list`。
 - `config test`。
 - `doctor`。
@@ -71,16 +73,31 @@
 - 一键安装脚本。
 - MCP 客户端配置生成命令。
 
+### 阶段 7：本地安装与接入收尾
+
+- Windows 本地安装主路径：提供 PowerShell 安装脚本、Windows PATH 刷新提示、Windows 下配置文件与客户端配置路径说明。
+- 面向更多 Agent 的 MCP 接入：在保留 Codex 自动安装的基础上，补充统一的 MCP 客户端配置生成 / 安装流程，降低不同本地 Agent 的接入成本。
+- 更人性化的安装引导与中文支持：优先补齐 `config update`、`config delete`，并优化安装完成后的 next steps、`doctor`、`config add`、`config update`、`config delete`、README 和常见错误提示，让普通用户按提示即可完成配置与接入。
+
 ## 当前完成状态
 
 - 项目骨架、CLI、MCP stdio 入口已实现。
 - 本地 TOML 配置、`master.key`、Fernet 密码加密已实现。
+- 当前配置主路径已覆盖 `config add`、`config update`、`config delete`、`config list`、`config test`。
+- `config add`、`config update`、`config delete` 已支持 `--language zh|en`，未显式指定时会在交互式主路径先选择语言。
 - MySQL / MariaDB 连接工厂和固定 `information_schema` 元数据查询已实现。
 - SQL 安全校验、单条 SELECT 限制、工具内部 EXPLAIN 已实现。
 - `inspect_query` 已组合返回表结构、索引、表统计、EXPLAIN、风险提示和 metadata 错误。
 - 默认从 GitHub 安装源安装的远程安装脚本和 `db-lens mcp config` 客户端配置生成命令已实现。
+- 当前本地安装主路径仍偏向 macOS / Linux shell + Codex 场景，Windows 安装、更多 Agent 的 MCP 接入、更加人性化的中文引导仍待补齐。
 - 当前验证命令：`rtk sh -n scripts/install.sh`、`rtk python -m pytest`、`rtk python -m compileall src tests`。
 - 发布前必须验证 README 中的 raw GitHub 安装 URL 返回 `200 OK`。
+
+## 当前收尾重点
+
+- 任务 1：补齐 Windows 安装主路径。目标是让普通 Windows 用户无需理解 Python、虚拟环境或手动配 PATH，也能完成安装并拿到明确下一步。
+- 任务 2：把 MCP 接入从“仅支持 Codex 自动安装”提升到“支持更多本地 Agent 的统一接入”。目标是保留 `install-codex`，同时补充可扩展的多客户端安装 / 配置出口。
+- 任务 3：把配置流程从工程化说明提升为傻瓜式引导，重点补齐中文 / 英文引导模式。目标是让安装脚本、CLI 和 README 在成功路径与失败路径上都能告诉用户“下一步做什么”，并补齐中文主路径支持。
 
 ## 暂不做
 
@@ -106,3 +123,6 @@
 - 第一版是否需要 Docker Compose 示例。
 - PyPI 包发布后是否把默认安装目标从 GitHub Git URL 切换为包名。
 - 仓库公开发布后，重新验证一行安装命令端到端可用。
+- 第一版优先覆盖哪些本地 Agent / MCP 客户端，以及哪些客户端只提供配置生成、哪些提供自动安装。
+- Windows 安装主路径是否只提供 PowerShell 脚本，还是同时补充 `winget` / Scoop / Chocolatey 方案。
+- `config update` / `config delete` 的最终命令名是否保持当前规划命名，还是调整为 `edit` / `remove`。

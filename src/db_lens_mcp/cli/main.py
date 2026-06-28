@@ -10,6 +10,7 @@ from pathlib import Path
 import typer
 
 from db_lens_mcp import __version__
+from db_lens_mcp.cli.language import Language, message as cli_message, resolve_language
 from db_lens_mcp.errors import ConfigurationError, DatabaseAccessError
 from db_lens_mcp.infrastructure.config.config_loader import ConfigLoader, resolve_config_path
 from db_lens_mcp.infrastructure.config.config_models import AppConfig, ProfileConfig
@@ -50,8 +51,10 @@ def help() -> None:
                 "1. Check installation:",
                 "   db-lens doctor",
                 "",
-                "2. Add a database profile:",
+                "2. Add, update, or delete a database profile:",
                 "   db-lens config add",
+                "   db-lens config update <profile>",
+                "   db-lens config delete <profile>",
                 "",
                 "3. Verify the profile:",
                 "   db-lens config list",
@@ -107,23 +110,44 @@ def doctor() -> None:
 
 @config_app.command("add")
 def config_add(
-    profile: str = typer.Option("", prompt="Profile name"),
-    host: str = typer.Option("127.0.0.1", prompt="Host"),
-    port: int = typer.Option(3306, prompt="Port"),
-    database: str = typer.Option("", prompt="Database"),
-    username: str = typer.Option("", prompt="Username"),
-    password: str = typer.Option("", prompt="Password", hide_input=True),
+    profile: str | None = typer.Option(None, help="Profile name."),
+    host: str | None = typer.Option(None, help="Database host."),
+    port: int | None = typer.Option(None, help="Database port."),
+    database: str | None = typer.Option(None, help="Database name."),
+    username: str | None = typer.Option(None, help="Database username."),
+    password: str | None = typer.Option(None, help="Database password.", hide_input=True),
     driver: str = typer.Option("mysql", help="Database driver. First phase supports mysql."),
+    language: str | None = typer.Option(None, help="CLI language: zh or en."),
     skip_test: bool = typer.Option(False, help="Save the profile without testing database access."),
 ) -> None:
     """Add or replace a database profile."""
 
-    _require_value("profile", profile)
-    _require_value("database", database)
-    _require_value("username", username)
-    _require_value("password", password)
-    if driver not in {"mysql", "mariadb"}:
-        raise typer.BadParameter("Only mysql and mariadb are supported in the first phase.")
+    interactive = any(
+        value is None for value in (profile, host, port, database, username, password)
+    )
+    language_value = resolve_language(language, prompt_if_missing=interactive)
+    _require_supported_driver(driver, language_value)
+
+    if profile is None:
+        profile = typer.prompt(cli_message(language_value, "profile_prompt"))
+    if host is None:
+        host = typer.prompt(cli_message(language_value, "host_prompt"), default="127.0.0.1")
+    if port is None:
+        port = typer.prompt(cli_message(language_value, "port_prompt"), default=3306, type=int)
+    if database is None:
+        database = typer.prompt(cli_message(language_value, "database_prompt"))
+    if username is None:
+        username = typer.prompt(cli_message(language_value, "username_prompt"))
+    if password is None:
+        password = typer.prompt(
+            cli_message(language_value, "password_prompt"),
+            hide_input=True,
+        )
+
+    _require_value("profile", profile, language_value)
+    _require_value("database", database, language_value)
+    _require_value("username", username, language_value)
+    _require_value("password", password, language_value)
     loader = ConfigLoader()
     secret_store = SecretStore()
     if loader.exists():
@@ -142,22 +166,163 @@ def config_add(
     if not config.default_profile:
         config.default_profile = profile
     config_path = loader.save(config)
-    typer.echo(f"Saved profile {profile!r} to {config_path}")
+    typer.echo(cli_message(language_value, "saved_profile", profile=profile, path=config_path))
     if skip_test:
-        typer.echo("database: not checked")
-        typer.echo("Next: db-lens config test " + profile)
+        typer.echo(cli_message(language_value, "database_not_checked"))
+        typer.echo(
+            cli_message(
+                language_value,
+                "next_step",
+                command="db-lens config test " + profile,
+            )
+        )
         return
     try:
         _test_database_connection(profile)
     except (ConfigurationError, DatabaseAccessError) as exc:
-        typer.echo(f"database: failed: {exc}")
+        typer.echo(cli_message(language_value, "database_failed", error=exc))
         typer.echo(
-            "Profile was saved. Fix the connection information and rerun: "
-            "db-lens config test " + profile
+            cli_message(
+                language_value,
+                "profile_saved_rerun",
+                command="db-lens config test " + profile,
+            )
         )
         raise typer.Exit(code=1) from exc
-    typer.echo("database: ok")
-    typer.echo("Next: db-lens mcp install-codex")
+    typer.echo(cli_message(language_value, "database_ok"))
+    typer.echo(
+        cli_message(
+            language_value,
+            "next_step",
+            command="db-lens mcp install-codex",
+        )
+    )
+
+
+@config_app.command("update")
+def config_update(
+    profile: str,
+    driver: str | None = typer.Option(
+        None,
+        help="Database driver. First phase supports mysql.",
+    ),
+    host: str | None = typer.Option(None, help="Database host."),
+    port: int | None = typer.Option(None, help="Database port."),
+    database: str | None = typer.Option(None, help="Database name."),
+    username: str | None = typer.Option(None, help="Database username."),
+    password: str | None = typer.Option(
+        None,
+        help="New database password. Leave unset to keep the current password.",
+        hide_input=True,
+    ),
+    language: str | None = typer.Option(None, help="CLI language: zh or en."),
+    skip_test: bool = typer.Option(False, help="Save the profile without testing database access."),
+) -> None:
+    """Update an existing database profile."""
+
+    interactive = all(
+        value is None for value in (driver, host, port, database, username, password)
+    )
+    language_value = resolve_language(language, prompt_if_missing=interactive)
+    loader = ConfigLoader()
+    secret_store = SecretStore()
+    try:
+        config = loader.load()
+        _profile_name, current_profile = config.get_profile(profile)
+    except ConfigurationError as exc:
+        typer.echo(cli_message(language_value, "config_update_failed", error=exc))
+        raise typer.Exit(code=1) from exc
+    except KeyError as exc:
+        message = exc.args[0] if exc.args else str(exc)
+        typer.echo(cli_message(language_value, "config_update_failed", error=message))
+        raise typer.Exit(code=1) from exc
+
+    if interactive:
+        driver = typer.prompt(
+            cli_message(language_value, "driver_prompt"),
+            default=current_profile.driver,
+        )
+        host = typer.prompt(
+            cli_message(language_value, "host_prompt"),
+            default=current_profile.host,
+        )
+        port = typer.prompt(
+            cli_message(language_value, "port_prompt"),
+            default=current_profile.port,
+            type=int,
+        )
+        database = typer.prompt(
+            cli_message(language_value, "database_prompt"),
+            default=current_profile.database,
+        )
+        username = typer.prompt(
+            cli_message(language_value, "username_prompt"),
+            default=current_profile.username,
+        )
+        password = typer.prompt(
+            cli_message(language_value, "password_keep_prompt"),
+            default="",
+            hide_input=True,
+            show_default=False,
+        )
+
+    driver_value = driver if driver is not None else current_profile.driver
+    host_value = host if host is not None else current_profile.host
+    port_value = port if port is not None else current_profile.port
+    database_value = database if database is not None else current_profile.database
+    username_value = username if username is not None else current_profile.username
+
+    _require_supported_driver(driver_value, language_value)
+    _require_value("host", host_value, language_value)
+    _require_value("database", database_value, language_value)
+    _require_value("username", username_value, language_value)
+
+    password_value = current_profile.password
+    if password is not None and password.strip():
+        password_value = secret_store.encrypt(password)
+
+    config.profiles[profile] = ProfileConfig(
+        driver=driver_value,
+        host=host_value,
+        port=port_value,
+        database=database_value,
+        username=username_value,
+        password=password_value,
+        connect_timeout_seconds=current_profile.connect_timeout_seconds,
+        read_timeout_seconds=current_profile.read_timeout_seconds,
+    )
+    config_path = loader.save(config)
+    typer.echo(cli_message(language_value, "updated_profile", profile=profile, path=config_path))
+    if skip_test:
+        typer.echo(cli_message(language_value, "database_not_checked"))
+        typer.echo(
+            cli_message(
+                language_value,
+                "next_step",
+                command="db-lens config test " + profile,
+            )
+        )
+        return
+    try:
+        _test_database_connection(profile)
+    except (ConfigurationError, DatabaseAccessError) as exc:
+        typer.echo(cli_message(language_value, "database_failed", error=exc))
+        typer.echo(
+            cli_message(
+                language_value,
+                "profile_updated_rerun",
+                command="db-lens config test " + profile,
+            )
+        )
+        raise typer.Exit(code=1) from exc
+    typer.echo(cli_message(language_value, "database_ok"))
+    typer.echo(
+        cli_message(
+            language_value,
+            "next_step",
+            command="db-lens mcp install-codex",
+        )
+    )
 
 
 @config_app.command("list")
@@ -180,6 +345,88 @@ def config_list() -> None:
         typer.echo(
             f"{marker} {name}: {public['driver']}://{public['username']}@"
             f"{public['host']}:{public['port']}/{public['database']}"
+        )
+
+
+@config_app.command("delete")
+def config_delete(
+    profile: str,
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Delete without asking for confirmation.",
+    ),
+    language: str | None = typer.Option(None, help="CLI language: zh or en."),
+) -> None:
+    """Delete an existing database profile."""
+
+    language_value = resolve_language(language, prompt_if_missing=not yes)
+    loader = ConfigLoader()
+    try:
+        config = loader.load()
+        _profile_name, current_profile = config.get_profile(profile)
+    except ConfigurationError as exc:
+        typer.echo(cli_message(language_value, "config_delete_failed", error=exc))
+        raise typer.Exit(code=1) from exc
+    except KeyError as exc:
+        message = exc.args[0] if exc.args else str(exc)
+        typer.echo(cli_message(language_value, "config_delete_failed", error=message))
+        raise typer.Exit(code=1) from exc
+
+    public = current_profile.public_dict()
+    typer.echo(
+        cli_message(
+            language_value,
+            "deleted_profile_summary",
+            profile=profile,
+            driver=public["driver"],
+            username=public["username"],
+            host=public["host"],
+            port=public["port"],
+            database=public["database"],
+        )
+    )
+    if not yes and not typer.confirm(
+        cli_message(language_value, "delete_confirm", profile=profile),
+        default=False,
+    ):
+        typer.echo(cli_message(language_value, "delete_cancelled"))
+        return
+
+    del config.profiles[profile]
+    default_message = ""
+    if config.default_profile == profile:
+        remaining_profiles = sorted(config.profiles)
+        config.default_profile = remaining_profiles[0] if remaining_profiles else None
+        if config.default_profile:
+            default_message = cli_message(
+                language_value,
+                "default_profile_set",
+                profile=config.default_profile,
+            )
+        else:
+            default_message = cli_message(language_value, "default_profile_cleared")
+
+    config_path = loader.save(config)
+    typer.echo(cli_message(language_value, "deleted_profile", profile=profile, path=config_path))
+    if default_message:
+        typer.echo(default_message)
+    if config.profiles:
+        typer.echo(
+            cli_message(
+                language_value,
+                "next_step",
+                command="db-lens config list",
+            )
+        )
+    else:
+        typer.echo(
+            cli_message(
+                language_value,
+                "next_step",
+                command="db-lens config add",
+            )
         )
 
 
@@ -267,9 +514,14 @@ def mcp_install_codex(
     typer.echo("Restart Codex, then ask it to use db-lens.")
 
 
-def _require_value(name: str, value: str) -> None:
+def _require_value(name: str, value: str, language: Language = "en") -> None:
     if not value.strip():
-        raise typer.BadParameter(f"{name} must not be empty.")
+        raise typer.BadParameter(cli_message(language, "empty_value", name=name))
+
+
+def _require_supported_driver(driver: str, language: Language = "en") -> None:
+    if driver not in {"mysql", "mariadb"}:
+        raise typer.BadParameter(cli_message(language, "unsupported_driver"))
 
 
 def _test_database_connection(profile: str | None) -> str:

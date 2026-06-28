@@ -36,6 +36,8 @@ def test_help_command_prints_common_workflow() -> None:
     assert result.exit_code == 0
     assert "db-lens common commands" in result.stdout
     assert "db-lens config add" in result.stdout
+    assert "db-lens config update <profile>" in result.stdout
+    assert "db-lens config delete <profile>" in result.stdout
     assert "db-lens mcp install-codex" in result.stdout
 
 
