@@ -33,7 +33,7 @@ db-lens config add
 8. 自动生成或复用 master key。
 9. 加密 password 并写入 config.toml。
 10. 自动执行一次连接测试。
-11. 输出下一步命令，用户优先通过 `db-lens mcp install-codex` 自动写入 Codex MCP 配置；`db-lens mcp config` 仅作为手动配置备用。
+11. 输出下一步命令，用户优先通过 `db-lens mcp install-codex`、`db-lens mcp install-claude-code` 或 `db-lens mcp install-trae` 自动写入已支持客户端的 MCP 配置；对其他未直接支持的 Agent，使用 `db-lens mcp handoff` 输出通用安装提示词；`db-lens mcp config` 仅作为手动配置备用。
 
 ### 修改配置
 

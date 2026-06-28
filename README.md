@@ -18,6 +18,8 @@ When the installer finishes, follow the `Next steps` printed in your terminal. T
 db-lens help
 db-lens config add
 db-lens mcp install-codex
+# or: db-lens mcp install-claude-code
+# or: db-lens mcp install-trae
 ```
 
 Release requirement: the install URL above must return `200 OK` before this README is used as public user documentation.
@@ -60,10 +62,23 @@ db-lens config delete old-profile
 db-lens config list
 db-lens config test local-dev
 db-lens mcp install-codex
+db-lens mcp install-claude-code
+db-lens mcp install-trae
+db-lens mcp handoff
 db-lens mcp config --client codex
+db-lens mcp config --client claude-code
+db-lens mcp config --client trae
 db-lens mcp config
 db-lens mcp run  # manual MCP server start, mainly for troubleshooting
 ```
+
+For other agents or MCP clients that are not directly supported yet, run:
+
+```bash
+db-lens mcp handoff
+```
+
+Then copy the output and send it to the agent so it can install the MCP server into its own client configuration.
 
 Interactive config commands support `--language zh` and `--language en`. When the flag is omitted, `config add`, interactive `config update`, and confirmation-based `config delete` will ask the user to choose a language first.
 
@@ -104,6 +119,8 @@ curl -fsSL https://raw.githubusercontent.com/MagicPelican/db-lens-mcp/master/scr
 db-lens help
 db-lens config add
 db-lens mcp install-codex
+# 或：db-lens mcp install-claude-code
+# 或：db-lens mcp install-trae
 ```
 
 发布要求：公开使用本文档前，上面的安装地址必须返回 `200 OK`。
@@ -136,10 +153,23 @@ db-lens config delete old-profile
 db-lens config list
 db-lens config test local-dev
 db-lens mcp install-codex
+db-lens mcp install-claude-code
+db-lens mcp install-trae
+db-lens mcp handoff
 db-lens mcp config --client codex
+db-lens mcp config --client claude-code
+db-lens mcp config --client trae
 db-lens mcp config
 db-lens mcp run  # 手动启动 MCP server，主要用于排查问题
 ```
+
+如果你使用的是当前还没有直接支持的 Agent 或 MCP 客户端，可以执行：
+
+```bash
+db-lens mcp handoff
+```
+
+然后把输出的整段内容发给对应的 Agent，让它把 `db-lens` 安装到自己的 MCP 配置里。
 
 交互式配置命令支持 `--language zh` 和 `--language en`。如果不显式传入，`config add`、交互式 `config update` 和需要确认的 `config delete` 会先让用户选择语言。
 

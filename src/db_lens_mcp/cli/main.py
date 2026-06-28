@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -62,10 +63,17 @@ def help() -> None:
                 "",
                 "4. Connect an AI client:",
                 "   db-lens mcp install-codex",
+                "   db-lens mcp install-claude-code",
+                "   db-lens mcp install-trae",
                 "",
-                "5. Print config instead of installing it:",
+                "5. Print config snippets instead of installing:",
                 "   db-lens mcp config",
                 "   db-lens mcp config --client codex",
+                "   db-lens mcp config --client claude-code",
+                "   db-lens mcp config --client trae",
+                "",
+                "6. Generate a handoff message for other agents:",
+                "   db-lens mcp handoff",
                 "",
                 "More help:",
                 "   db-lens --help",
@@ -456,7 +464,10 @@ def mcp_run() -> None:
 def mcp_config(
     server_name: str = typer.Option("db-lens", help="MCP server name in the client config."),
     command: str = typer.Option("", help="Command used by the MCP client. Defaults to db-lens."),
-    client: str = typer.Option("json", help="Output format: json or codex."),
+    client: str = typer.Option(
+        "json",
+        help="Output format: json, codex, claude-code, or trae.",
+    ),
     config_file: str = typer.Option(
         "",
         help="Optional DB_LENS_CONFIG_FILE value for clients that need an explicit path.",
@@ -466,18 +477,60 @@ def mcp_config(
 
     command_value = command.strip() or _resolve_db_lens_command()
     client_value = client.strip().lower()
+    config_file_value = config_file.strip()
     if client_value == "codex":
-        typer.echo(_codex_mcp_block(server_name, command_value, config_file.strip()))
+        typer.echo(_codex_mcp_block(server_name, command_value, config_file_value))
+        return
+    if client_value == "claude-code":
+        typer.echo(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        server_name: _claude_code_server_definition(
+                            command_value,
+                            config_file_value,
+                        )
+                    }
+                },
+                indent=2,
+            )
+        )
+        return
+    if client_value == "trae":
+        typer.echo(
+            json.dumps(
+                _trae_mcp_file(server_name, command_value, config_file_value),
+                indent=2,
+            )
+        )
         return
     if client_value != "json":
-        raise typer.BadParameter("client must be json or codex.")
-    server_config = {
-        "command": command_value,
-        "args": ["mcp", "run"],
-    }
-    if config_file.strip():
-        server_config["env"] = {"DB_LENS_CONFIG_FILE": config_file.strip()}
-    typer.echo(json.dumps({"mcpServers": {server_name: server_config}}, indent=2))
+        raise typer.BadParameter("client must be json, codex, claude-code, or trae.")
+    typer.echo(
+        json.dumps(
+            {
+                "mcpServers": {
+                    server_name: _base_server_config(command_value, config_file_value)
+                }
+            },
+            indent=2,
+        )
+    )
+
+
+@mcp_app.command("handoff")
+def mcp_handoff(
+    server_name: str = typer.Option("db-lens", help="MCP server name in the handoff message."),
+    command: str = typer.Option("", help="Command used by the MCP client. Defaults to db-lens."),
+    config_file: str = typer.Option(
+        "",
+        help="Optional DB_LENS_CONFIG_FILE value for clients that need an explicit path.",
+    ),
+) -> None:
+    """Print a generic MCP installation message for other agents."""
+
+    command_value = command.strip() or _resolve_db_lens_command()
+    typer.echo(_handoff_message(server_name, command_value, config_file.strip()))
 
 
 @mcp_app.command("install-codex")
@@ -496,6 +549,7 @@ def mcp_install_codex(
     """Install db-lens into Codex config.toml."""
 
     command_value = command.strip() or _resolve_db_lens_command()
+    config_file_value = db_lens_config_file.strip()
     config_path = Path(codex_config).expanduser() if codex_config.strip() else _codex_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     existing = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
@@ -505,13 +559,86 @@ def mcp_install_codex(
     updated = _install_toml_block(
         existing,
         server_name,
-        _codex_mcp_block(server_name, command_value, db_lens_config_file.strip()),
+        _codex_mcp_block(server_name, command_value, config_file_value),
     )
     config_path.write_text(updated, encoding="utf-8")
     typer.echo(f"Codex MCP config updated: {config_path}")
     if config_path.with_suffix(config_path.suffix + ".bak").exists():
         typer.echo(f"Backup: {config_path.with_suffix(config_path.suffix + '.bak')}")
     typer.echo("Restart Codex, then ask it to use db-lens.")
+
+
+@mcp_app.command("install-claude-code")
+def mcp_install_claude_code(
+    server_name: str = typer.Option("db-lens", help="MCP server name in Claude Code."),
+    command: str = typer.Option("", help="Command used by Claude Code. Defaults to db-lens."),
+    scope: str = typer.Option(
+        "user",
+        help="Claude Code MCP scope: local, user, or project.",
+    ),
+    claude_command: str = typer.Option(
+        "",
+        help="Path to the Claude Code CLI. Defaults to `claude` on PATH.",
+    ),
+    db_lens_config_file: str = typer.Option(
+        "",
+        help="Optional DB_LENS_CONFIG_FILE value to write into the Claude Code MCP server env.",
+    ),
+) -> None:
+    """Install db-lens into Claude Code."""
+
+    command_value = command.strip() or _resolve_db_lens_command()
+    scope_value = _validate_claude_scope(scope)
+    claude_cli = _resolve_claude_command(claude_command)
+    payload = json.dumps(
+        _claude_code_server_definition(command_value, db_lens_config_file.strip())
+    )
+    result = _run_external_command(
+        [
+            claude_cli,
+            "mcp",
+            "add-json",
+            "--scope",
+            scope_value,
+            server_name,
+            payload,
+        ],
+        client_name="Claude Code",
+    )
+    _echo_command_output(result, fallback_message="Claude Code MCP config updated.")
+    typer.echo("Restart Claude Code if it is already running.")
+
+
+@mcp_app.command("install-trae")
+def mcp_install_trae(
+    server_name: str = typer.Option("db-lens", help="MCP server name in Trae."),
+    command: str = typer.Option("", help="Command used by Trae. Defaults to db-lens."),
+    trae_command: str = typer.Option(
+        "",
+        help="Path to the Trae CLI. Defaults to `trae` on PATH or the standard macOS app path.",
+    ),
+    db_lens_config_file: str = typer.Option(
+        "",
+        help="Optional DB_LENS_CONFIG_FILE value to write into the Trae MCP server env.",
+    ),
+) -> None:
+    """Install db-lens into Trae."""
+
+    command_value = command.strip() or _resolve_db_lens_command()
+    trae_cli = _resolve_trae_command(trae_command)
+    payload = json.dumps(
+        _trae_server_definition(server_name, command_value, db_lens_config_file.strip())
+    )
+    result = _run_external_command(
+        [
+            trae_cli,
+            "--add-mcp",
+            payload,
+        ],
+        client_name="Trae",
+    )
+    _echo_command_output(result, fallback_message="Trae MCP config updated.")
+    typer.echo("Restart Trae if it is already running.")
 
 
 def _require_value(name: str, value: str, language: Language = "en") -> None:
@@ -555,8 +682,111 @@ def _resolve_db_lens_command() -> str:
     )
 
 
+def _resolve_claude_command(explicit_command: str = "") -> str:
+    if explicit_command.strip():
+        return explicit_command.strip()
+    resolved = shutil.which("claude")
+    if resolved:
+        return resolved
+    raise ConfigurationError(
+        "Claude Code CLI was not found on PATH. Install Claude Code, or pass "
+        "--claude-command /path/to/claude."
+    )
+
+
+def _resolve_trae_command(explicit_command: str = "") -> str:
+    if explicit_command.strip():
+        return explicit_command.strip()
+    resolved = shutil.which("trae")
+    if resolved:
+        return resolved
+    for candidate in _candidate_trae_commands():
+        if candidate.exists():
+            return str(candidate)
+    raise ConfigurationError(
+        "Trae CLI was not found on PATH. Install Trae, or pass "
+        "--trae-command /path/to/trae."
+    )
+
+
+def _candidate_trae_commands() -> list[Path]:
+    app_roots = [Path("/Applications"), Path.home() / "Applications"]
+    app_names = ["Trae.app", "Trae CN.app", "TRAE SOLO.app"]
+    return [
+        app_root / app_name / "Contents" / "Resources" / "app" / "bin" / "trae"
+        for app_root in app_roots
+        for app_name in app_names
+    ]
+
+
+def _validate_claude_scope(scope: str) -> str:
+    scope_value = scope.strip().lower()
+    if scope_value not in {"local", "user", "project"}:
+        raise typer.BadParameter("scope must be local, user, or project.")
+    return scope_value
+
+
 def _codex_config_path() -> Path:
     return Path.home() / ".codex" / "config.toml"
+
+
+def _base_server_config(command: str, config_file: str = "") -> dict[str, object]:
+    server_config: dict[str, object] = {
+        "command": command,
+        "args": ["mcp", "run"],
+    }
+    if config_file:
+        server_config["env"] = {"DB_LENS_CONFIG_FILE": config_file}
+    return server_config
+
+
+def _claude_code_server_definition(command: str, config_file: str = "") -> dict[str, object]:
+    server_config = {"type": "stdio"}
+    server_config.update(_base_server_config(command, config_file))
+    return server_config
+
+
+def _trae_server_definition(
+    server_name: str,
+    command: str,
+    config_file: str = "",
+) -> dict[str, object]:
+    server_config = {"name": server_name}
+    server_config.update(_base_server_config(command, config_file))
+    return server_config
+
+
+def _trae_mcp_file(server_name: str, command: str, config_file: str = "") -> dict[str, object]:
+    return {
+        "servers": {
+            server_name: _base_server_config(command, config_file),
+        },
+        "inputs": [],
+    }
+
+
+def _handoff_message(server_name: str, command: str, config_file: str = "") -> str:
+    payload = {
+        "mcpServers": {
+            server_name: _base_server_config(command, config_file),
+        }
+    }
+    config_json = json.dumps(payload, indent=2, ensure_ascii=False)
+    return "\n".join(
+        [
+            "请把下面这个 MCP server 配置到你当前使用的 MCP 客户端中，并完成安装。",
+            "",
+            "要求：",
+            f"- server 名称保持为 {server_name}",
+            "- 使用下面的 command、args 和 env",
+            "- 不要修改配置中的字段名",
+            "- 如果你的客户端不支持自动安装，请把下面的 JSON 配置粘贴到对应的 MCP 配置位置",
+            "- 安装完成后，确认你已经能看到 db-lens 提供的 MCP tools",
+            "",
+            "配置：",
+            config_json,
+        ]
+    )
 
 
 def _codex_mcp_block(server_name: str, command: str, config_file: str = "") -> str:
@@ -601,3 +831,38 @@ def _install_toml_block(existing: str, server_name: str, block: str) -> str:
     if content:
         return content + "\n\n" + block
     return block
+
+
+def _run_external_command(
+    command: list[str],
+    *,
+    client_name: str,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise ConfigurationError(
+            f"{client_name} CLI was not found. Install {client_name}, or pass its explicit CLI path."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        output = (exc.stderr or exc.stdout).strip()
+        if not output:
+            output = str(exc)
+        raise ConfigurationError(f"{client_name} MCP install failed: {output}") from exc
+
+
+def _echo_command_output(
+    result: subprocess.CompletedProcess[str],
+    *,
+    fallback_message: str,
+) -> None:
+    stdout = result.stdout.strip()
+    if stdout:
+        typer.echo(stdout)
+        return
+    typer.echo(fallback_message)

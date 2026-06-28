@@ -1,5 +1,7 @@
-from typer.testing import CliRunner
 import json
+import subprocess
+
+from typer.testing import CliRunner
 
 from db_lens_mcp import __version__
 from db_lens_mcp.cli.main import app
@@ -39,6 +41,9 @@ def test_help_command_prints_common_workflow() -> None:
     assert "db-lens config update <profile>" in result.stdout
     assert "db-lens config delete <profile>" in result.stdout
     assert "db-lens mcp install-codex" in result.stdout
+    assert "db-lens mcp install-claude-code" in result.stdout
+    assert "db-lens mcp install-trae" in result.stdout
+    assert "db-lens mcp handoff" in result.stdout
 
 
 def test_mcp_config_prints_client_json() -> None:
@@ -93,10 +98,130 @@ def test_mcp_config_prints_codex_toml() -> None:
     assert 'DB_LENS_CONFIG_FILE = "/tmp/db-lens.toml"' in result.stdout
 
 
+def test_mcp_config_prints_claude_code_json() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "config",
+            "--client",
+            "claude-code",
+            "--command",
+            "/usr/local/bin/db-lens",
+            "--config-file",
+            "/tmp/db-lens.toml",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    server = payload["mcpServers"]["db-lens"]
+    assert server == {
+        "type": "stdio",
+        "command": "/usr/local/bin/db-lens",
+        "args": ["mcp", "run"],
+        "env": {"DB_LENS_CONFIG_FILE": "/tmp/db-lens.toml"},
+    }
+
+
+def test_mcp_config_prints_trae_json() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "config",
+            "--client",
+            "trae",
+            "--command",
+            "/usr/local/bin/db-lens",
+            "--config-file",
+            "/tmp/db-lens.toml",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "servers": {
+            "db-lens": {
+                "command": "/usr/local/bin/db-lens",
+                "args": ["mcp", "run"],
+                "env": {"DB_LENS_CONFIG_FILE": "/tmp/db-lens.toml"},
+            }
+        },
+        "inputs": [],
+    }
+
+
 def test_mcp_config_does_not_print_secrets() -> None:
     runner = CliRunner()
 
     result = runner.invoke(app, ["mcp", "config"])
+
+    assert result.exit_code == 0
+    lowered = result.stdout.lower()
+    assert "password" not in lowered
+    assert "master_key" not in lowered
+    assert "mysql://" not in lowered
+
+
+def test_mcp_handoff_prints_generic_agent_prompt() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "handoff",
+            "--command",
+            "/usr/local/bin/db-lens",
+            "--config-file",
+            "/tmp/db-lens.toml",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "请把下面这个 MCP server 配置到你当前使用的 MCP 客户端中，并完成安装。" in result.stdout
+    assert '"mcpServers"' in result.stdout
+    assert '"command": "/usr/local/bin/db-lens"' in result.stdout
+    assert '"args": [' in result.stdout
+    assert 'DB_LENS_CONFIG_FILE' in result.stdout
+
+
+def test_mcp_handoff_omits_empty_env_block() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "handoff",
+            "--command",
+            "/usr/local/bin/db-lens",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert 'DB_LENS_CONFIG_FILE' not in result.stdout
+    assert '"env": {}' not in result.stdout
+
+
+def test_mcp_handoff_does_not_print_secrets() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "handoff",
+            "--command",
+            "/usr/local/bin/db-lens",
+        ],
+    )
 
     assert result.exit_code == 0
     lowered = result.stdout.lower()
@@ -207,3 +332,101 @@ def test_mcp_install_codex_replaces_quoted_existing_table(tmp_path) -> None:
     assert "/old/config.toml" not in content
     assert content.count("[mcp_servers.db-lens]") == 1
     assert 'command = "/new/db-lens"' in content
+
+
+def test_mcp_install_claude_code_runs_client_cli(monkeypatch) -> None:
+    runner = CliRunner()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(command, check, capture_output, text):
+        captured["command"] = command
+        assert check is True
+        assert capture_output is True
+        assert text is True
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="Added stdio MCP server db-lens to user config\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr("db_lens_mcp.cli.main.subprocess.run", fake_run)
+
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "install-claude-code",
+            "--command",
+            "/usr/local/bin/db-lens",
+            "--claude-command",
+            "/usr/local/bin/claude",
+            "--db-lens-config-file",
+            "/tmp/db-lens.toml",
+        ],
+    )
+
+    assert result.exit_code == 0
+    command = captured["command"]
+    assert command[:5] == [
+        "/usr/local/bin/claude",
+        "mcp",
+        "add-json",
+        "--scope",
+        "user",
+    ]
+    assert command[5] == "db-lens"
+    assert json.loads(command[6]) == {
+        "type": "stdio",
+        "command": "/usr/local/bin/db-lens",
+        "args": ["mcp", "run"],
+        "env": {"DB_LENS_CONFIG_FILE": "/tmp/db-lens.toml"},
+    }
+    assert "Restart Claude Code if it is already running." in result.stdout
+
+
+def test_mcp_install_trae_runs_client_cli(monkeypatch) -> None:
+    runner = CliRunner()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(command, check, capture_output, text):
+        captured["command"] = command
+        assert check is True
+        assert capture_output is True
+        assert text is True
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="Added MCP servers: db-lens\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr("db_lens_mcp.cli.main.subprocess.run", fake_run)
+
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "install-trae",
+            "--command",
+            "/usr/local/bin/db-lens",
+            "--trae-command",
+            "/Applications/Trae.app/Contents/Resources/app/bin/trae",
+            "--db-lens-config-file",
+            "/tmp/db-lens.toml",
+        ],
+    )
+
+    assert result.exit_code == 0
+    command = captured["command"]
+    assert command[:2] == [
+        "/Applications/Trae.app/Contents/Resources/app/bin/trae",
+        "--add-mcp",
+    ]
+    assert json.loads(command[2]) == {
+        "name": "db-lens",
+        "command": "/usr/local/bin/db-lens",
+        "args": ["mcp", "run"],
+        "env": {"DB_LENS_CONFIG_FILE": "/tmp/db-lens.toml"},
+    }
+    assert "Restart Trae if it is already running." in result.stdout

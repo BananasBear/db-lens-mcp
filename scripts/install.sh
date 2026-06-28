@@ -75,10 +75,13 @@ Next steps:
   3. Add your database:
      $DB_LENS_COMMAND config add
 
-  4. Connect Codex:
+  4. Connect your AI client:
      $DB_LENS_COMMAND mcp install-codex
+     $DB_LENS_COMMAND mcp install-claude-code
+     $DB_LENS_COMMAND mcp install-trae
+     $DB_LENS_COMMAND mcp handoff
 
-Restart Codex after install-codex completes.
+Restart the client you installed after the MCP command completes.
 EOF
   cat <<'EOF'
 
