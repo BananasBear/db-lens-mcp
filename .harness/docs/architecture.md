@@ -73,8 +73,9 @@ src/db_lens_mcp/
 ### `application/`
 
 - 负责编排业务流程。
-- `database_inspection_service.py` 组织表结构、索引、统计信息读取。
-- `query_inspection_service.py` 组织 `inspect_query` 主流程：SQL 安全校验、识别相关表、读取表上下文、执行 EXPLAIN、生成风险提示和 AI 摘要。
+  - `database_inspection_service.py` 组织表结构、索引、统计信息读取。
+  - `table_locator_service.py` 维护表到 database 的映射缓存，并在工具缺少 database 时做唯一解析或返回歧义。
+  - `query_inspection_service.py` 组织 `inspect_query` 主流程：SQL 安全校验、识别相关表、读取表上下文、执行 EXPLAIN、生成风险提示和 AI 摘要。
 - 不处理底层数据库连接细节。
 
 ### `domain/`
@@ -99,6 +100,7 @@ src/db_lens_mcp/
 - MCP 协议入口和数据库核心能力分离。
 - 本地模式和服务器模式复用同一套核心能力。
 - 数据库访问层只暴露项目需要的白名单能力，不提供通用 SQL 执行入口。
+- 不提供默认 profile 或默认 database 产品语义；缺少上下文时只能通过唯一配置、显式参数或表映射缓存唯一命中解析。
 - 所有用户输入 SQL 必须经过安全校验。
 - SQL 安全判断放在领域层，数据库执行层只接收已校验过的请求。
 - MySQL/MariaDB 适配先做具体实现，不提前设计复杂多数据库插件系统。

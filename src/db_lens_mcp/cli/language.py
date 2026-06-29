@@ -17,7 +17,7 @@ _MESSAGES: Final[dict[Language, dict[str, str]]] = {
         "profile_prompt": "Profile name",
         "host_prompt": "Host",
         "port_prompt": "Port",
-        "database_prompt": "Database",
+        "database_prompt": "Databases (comma-separated)",
         "username_prompt": "Username",
         "password_prompt": "Password",
         "driver_prompt": "Database driver",
@@ -26,13 +26,11 @@ _MESSAGES: Final[dict[Language, dict[str, str]]] = {
         "updated_profile": "Updated profile {profile!r} in {path}",
         "deleted_profile_summary": (
             "Delete profile {profile!r}: "
-            "{driver}://{username}@{host}:{port}/{database}"
+            "{driver}://{username}@{host}:{port}/{databases}"
         ),
         "delete_confirm": "Delete profile {profile!r}?",
         "delete_cancelled": "Delete cancelled.",
         "deleted_profile": "Deleted profile {profile!r} from {path}",
-        "default_profile_set": "default_profile: {profile}",
-        "default_profile_cleared": "default_profile: cleared",
         "database_not_checked": "database: not checked",
         "database_failed": "database: failed: {error}",
         "database_ok": "database: ok",
@@ -52,7 +50,7 @@ _MESSAGES: Final[dict[Language, dict[str, str]]] = {
         "profile_prompt": "请输入 profile 名称",
         "host_prompt": "请输入 host",
         "port_prompt": "请输入 port",
-        "database_prompt": "请输入 database",
+        "database_prompt": "请输入 databases（多个用英文逗号分隔）",
         "username_prompt": "请输入 username",
         "password_prompt": "请输入 password",
         "driver_prompt": "请输入 driver",
@@ -61,13 +59,11 @@ _MESSAGES: Final[dict[Language, dict[str, str]]] = {
         "updated_profile": "已在 {path} 中更新 profile {profile!r}",
         "deleted_profile_summary": (
             "将删除 profile {profile!r}: "
-            "{driver}://{username}@{host}:{port}/{database}"
+            "{driver}://{username}@{host}:{port}/{databases}"
         ),
         "delete_confirm": "确认删除 profile {profile!r} 吗？",
         "delete_cancelled": "已取消删除。",
         "deleted_profile": "已从 {path} 删除 profile {profile!r}",
-        "default_profile_set": "default_profile: {profile}",
-        "default_profile_cleared": "default_profile: 已清空",
         "database_not_checked": "database: 未检查",
         "database_failed": "database: 失败: {error}",
         "database_ok": "database: 连接成功",

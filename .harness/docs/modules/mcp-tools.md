@@ -16,6 +16,9 @@ AI 使用这些工具了解：
 
 | 工具 | 作用 | 风险级别 | 一期优先级 |
 | --- | --- | --- | --- |
+| `list_profiles` | 获取已配置连接 profile，不返回密码 | 低 | P0 |
+| `refresh_table_cache` | 刷新 profile 下配置 databases 的表映射缓存 | 低 | P0 |
+| `find_tables` | 通过表名或关键词查找表所在 database | 低 | P0 |
 | `list_databases` | 获取当前连接可见的数据库列表 | 低 | P1 |
 | `list_tables` | 获取指定 database 下的表列表，支持关键词过滤 | 低 | P1 |
 | `describe_table` | 获取表字段、类型、是否可空、默认值、主键、注释 | 低 | P0 |
@@ -28,7 +31,9 @@ P0 是一期重点打磨能力，P1 是支撑能力。
 
 ## 通用输入字段
 
-所有工具都应支持连接配置别名：
+连接 profile 表示一组连接身份和允许访问的 databases。配置中不存在默认 profile 和默认 database 的产品语义；当只配置了一个 profile 时，工具可以将其作为无歧义解析结果返回，但响应必须显式带出实际 profile。
+
+工具应支持连接配置别名：
 
 ```json
 {
@@ -36,12 +41,91 @@ P0 是一期重点打磨能力，P1 是支撑能力。
 }
 ```
 
-涉及 database 的工具显式传入 database，不依赖隐式当前库：
+涉及表名的工具优先通过表映射缓存定位 database。调用方可以显式传入 database；未传入时，如果表只存在于一个配置库中，工具自动解析。如果表不存在或存在同名表，工具返回 `table_not_found` 或 `ambiguous_table`，不得猜测。
 
 ```json
 {
   "profile": "local-dev",
   "database": "app_db"
+}
+```
+
+## `list_profiles`
+
+### 输入
+
+```json
+{}
+```
+
+### 输出
+
+```json
+{
+  "profiles": [
+    {
+      "name": "local-dev",
+      "driver": "mysql",
+      "host": "127.0.0.1",
+      "port": 3306,
+      "databases": ["app_db", "audit_db"],
+      "username": "readonly_user"
+    }
+  ]
+}
+```
+
+## `refresh_table_cache`
+
+表映射缓存默认 TTL 为 7 天。自动刷新策略必须克制：只有在表名未命中且该 profile 缓存已过期或不存在时，工具才刷新缓存。命中缓存时不刷新；未命中但缓存未过期时直接返回 `table_not_found`。用户可以通过 `refresh_table_cache` 或 CLI `db-lens cache refresh <profile>` 手动刷新。
+
+### 输入
+
+```json
+{
+  "profile": "local-dev"
+}
+```
+
+### 输出
+
+```json
+{
+  "profile": "local-dev",
+  "databases": [
+    {
+      "name": "app_db",
+      "table_count": 128
+    }
+  ]
+}
+```
+
+## `find_tables`
+
+### 输入
+
+```json
+{
+  "profile": "local-dev",
+  "table": "order"
+}
+```
+
+`profile` 在只配置一个 profile 时可省略；多个 profile 时必须显式传入。
+
+### 输出
+
+```json
+{
+  "profile": "local-dev",
+  "matches": [
+    {
+      "profile": "local-dev",
+      "database": "app_db",
+      "table": "orders"
+    }
+  ]
 }
 ```
 
@@ -103,10 +187,12 @@ P0 是一期重点打磨能力，P1 是支撑能力。
 ```json
 {
   "profile": "local-dev",
-  "database": "app_db",
-  "table": "orders"
+  "table": "orders",
+  "database": "app_db"
 }
 ```
+
+`database` 可选。省略时通过表映射缓存定位；同名表必须返回歧义，不得猜测。
 
 ### 输出
 
@@ -136,8 +222,8 @@ P0 是一期重点打磨能力，P1 是支撑能力。
 ```json
 {
   "profile": "local-dev",
-  "database": "app_db",
-  "table": "orders"
+  "table": "orders",
+  "database": "app_db"
 }
 ```
 
@@ -166,8 +252,8 @@ P0 是一期重点打磨能力，P1 是支撑能力。
 ```json
 {
   "profile": "local-dev",
-  "database": "app_db",
-  "table": "orders"
+  "table": "orders",
+  "database": "app_db"
 }
 ```
 
@@ -194,10 +280,12 @@ P0 是一期重点打磨能力，P1 是支撑能力。
 ```json
 {
   "profile": "local-dev",
-  "database": "app_db",
-  "sql": "select * from orders where user_id = ? order by created_at desc limit 20"
+  "sql": "select * from orders where user_id = ? order by created_at desc limit 20",
+  "database": "app_db"
 }
 ```
+
+`database` 可选。省略时，工具从 SQL 中识别表名并通过表映射缓存定位；所有表必须唯一解析到同一个 database。
 
 ### 输出
 
@@ -228,8 +316,8 @@ P0 是一期重点打磨能力，P1 是支撑能力。
 ```json
 {
   "profile": "local-dev",
-  "database": "app_db",
-  "sql": "select * from orders where user_id = ? order by created_at desc limit 20"
+  "sql": "select * from orders where user_id = ? order by created_at desc limit 20",
+  "database": "app_db"
 }
 ```
 
@@ -310,6 +398,7 @@ SQL 不符合安全要求时，工具必须拒绝执行。
 - 解析失败必须拒绝。
 - 带占位符 SQL 未提供参数时，可以返回表结构和索引上下文，但必须跳过 EXPLAIN。
 - 不得自动猜测或编造参数值。
+- 不得猜测 profile 或 database；只能使用显式参数、唯一配置或表映射缓存的唯一命中结果。
 - INSERT、UPDATE、DELETE、DDL、CALL、LOAD DATA、事务控制等语句必须拒绝。
 - 返回结果不得包含数据库密码、密钥或完整连接串。
 

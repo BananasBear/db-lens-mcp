@@ -46,6 +46,23 @@ def test_help_command_prints_common_workflow() -> None:
     assert "db-lens mcp handoff" in result.stdout
 
 
+def test_command_groups_accept_help_command() -> None:
+    runner = CliRunner()
+
+    cases = [
+        (["config", "help"], "Usage: db-lens config", "add"),
+        (["cache", "help"], "Usage: db-lens cache", "refresh"),
+        (["mcp", "help"], "Usage: db-lens mcp", "install-codex"),
+    ]
+
+    for args, usage, expected_command in cases:
+        result = runner.invoke(app, args)
+
+        assert result.exit_code == 0
+        assert usage in result.stdout
+        assert expected_command in result.stdout
+
+
 def test_mcp_config_prints_client_json() -> None:
     runner = CliRunner()
 

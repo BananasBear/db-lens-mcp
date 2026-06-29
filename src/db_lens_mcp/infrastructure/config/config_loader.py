@@ -100,6 +100,11 @@ def _load_fixed_toml(path: Path) -> dict[str, Any]:
 
 
 def _parse_value(raw_value: str) -> Any:
+    if raw_value.startswith("[") and raw_value.endswith("]"):
+        inner = raw_value[1:-1].strip()
+        if not inner:
+            return []
+        return [_parse_value(item.strip()) for item in inner.split(",")]
     if raw_value.startswith('"') and raw_value.endswith('"'):
         return raw_value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
     try:
@@ -110,9 +115,6 @@ def _parse_value(raw_value: str) -> Any:
 
 def _dump_config(config: AppConfig) -> str:
     lines: list[str] = []
-    if config.default_profile:
-        lines.append(f'default_profile = "{_escape(config.default_profile)}"')
-        lines.append("")
     for name in sorted(config.profiles):
         profile = config.profiles[name]
         lines.append(f"[profiles.{_escape(name)}]")
@@ -126,7 +128,7 @@ def _dump_profile(profile: ProfileConfig) -> list[str]:
         f'driver = "{_escape(profile.driver)}"',
         f'host = "{_escape(profile.host)}"',
         f"port = {profile.port}",
-        f'database = "{_escape(profile.database)}"',
+        "databases = [" + ", ".join(f'"{_escape(database)}"' for database in profile.databases) + "]",
         f'username = "{_escape(profile.username)}"',
         f'password = "{_escape(profile.password)}"',
         f"connect_timeout_seconds = {profile.connect_timeout_seconds}",

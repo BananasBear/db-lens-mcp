@@ -27,7 +27,7 @@ db-lens config add
 2. 输入 profile 名称，例如 `local-dev`。
 3. 输入 host，默认 `127.0.0.1`。
 4. 输入 port，默认 `3306`。
-5. 输入 database。
+5. 输入 databases，多个库用英文逗号分隔。
 6. 输入 username。
 7. 安全输入 password，不回显。
 8. 自动生成或复用 master key。
@@ -45,7 +45,7 @@ db-lens config update local-dev
 
 1. 选择语言模式，支持 `中文` 和 `English`。
 2. 读取已有 profile 当前配置并展示可修改项。
-3. 逐项确认是否修改 `driver`、`host`、`port`、`database`、`username`、`password` 等字段。
+3. 逐项确认是否修改 `driver`、`host`、`port`、`databases`、`username`、`password` 等字段。
 4. 未修改的字段保持原值。
 5. 如修改 password，继续使用 master key 加密后写回 config.toml。
 6. 默认执行一次连接测试。
@@ -63,8 +63,7 @@ db-lens config delete local-dev
 2. 展示将要删除的 profile 基本信息，不展示密码或密文。
 3. 要求用户二次确认，避免误删。
 4. 删除对应 profile。
-5. 如果删除的是默认 profile，需要提示用户重新选择默认 profile，或在没有剩余 profile 时清空 `default_profile`。
-6. 输出下一步命令，例如 `db-lens config list` 或重新执行 `db-lens config add`。
+5. 输出下一步命令，例如 `db-lens config list` 或重新执行 `db-lens config add`。
 
 ### 查看配置
 
@@ -72,7 +71,7 @@ db-lens config delete local-dev
 db-lens config list
 ```
 
-只展示 profile、host、port、database、username，不展示密码、密文和 master key。
+只展示 profile、host、port、databases、username，不展示密码、密文和 master key。
 
 ### 测试配置
 
@@ -90,11 +89,19 @@ db-lens config test local-dev
 
 不检查数据库账号权限是否过大。
 
+### 刷新表映射缓存
+
+```bash
+db-lens cache refresh local-dev
+```
+
+刷新指定 profile 下已配置 databases 的表名映射。自动刷新只在“表未找到且缓存已过期或不存在”时触发；默认 TTL 为 7 天。不会定时刷新，不会在缓存命中时刷新。
+
 ### 语言模式
 
 - `config add`、`config update`、`config delete` 作为主要交互式配置命令，需要支持 `中文` 和 `English` 两种引导模式。
 - 中文模式下，只把引导文案、确认语、成功/失败提示和下一步建议切换为中文。
-- `profile`、`driver`、`host`、`port`、`database`、`username`、`password`、`default_profile` 等专业名词和配置字段名保持英文，不做翻译。
+- `profile`、`driver`、`host`、`port`、`databases`、`username`、`password` 等专业名词和配置字段名保持英文，不做翻译。
 - 支持显式参数 `--language zh` / `--language en`；未显式指定时，再通过交互式选择语言。
 - 当前范围内，`config add`、交互式 `config update` 和需要确认的 `config delete` 会在主流程开始前先选择语言；纯 CLI 参数调用默认继续使用英文输出。
 - `config list`、`config test` 和 `doctor` 的输出可逐步补充双语或中文引导，但第一优先级是补齐 `add` / `update` / `delete` 的交互流程。
@@ -110,19 +117,17 @@ db-lens doctor
 - Python 运行环境。
 - 配置文件是否存在。
 - 配置文件和 master key 文件权限是否合理。
-- 默认 profile 是否可用。
-- 数据库连通性。
+- 配置的 profile 是否可用。
+- 配置的 databases 连通性。
 
 ## TOML 示例
 
 ```toml
-default_profile = "local-dev"
-
 [profiles.local-dev]
 driver = "mysql"
 host = "127.0.0.1"
 port = 3306
-database = "app_db"
+databases = ["app_db", "audit_db"]
 username = "readonly_user"
 password = "enc:v1:..."
 connect_timeout_seconds = 5
@@ -198,7 +203,6 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 - `config delete` 已实现：
   - 默认展示待删除 profile 的公开信息，并要求二次确认。
   - 支持 `--yes` 跳过确认，便于脚本化调用。
-  - 删除 `default_profile` 时，如仍有剩余 profile，自动把按名称排序后的第一个 profile 设为新的 `default_profile`；如果已无剩余 profile，则清空 `default_profile`。
 - 配置主路径语言模式已实现：
   - `config add`、`config update`、`config delete` 支持 `--language zh|en`。
   - 未显式指定时，`config add`、交互式 `config update` 和需要确认的 `config delete` 会先让用户选择语言。
@@ -211,4 +215,9 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 ## 待确认
 
 - `config update` 是否需要开放 `connect_timeout_seconds`、`read_timeout_seconds` 等连接参数的用户可修改能力。
-- 是否需要新增显式的 `config set-default` 命令，让用户手动切换 `default_profile`，而不是只在删除默认 profile 时自动重置。
+
+## 已废弃设计
+
+- 不再提供 `default_profile` 产品语义。
+- 不再把 profile 绑定到单个 `database`。
+- 旧配置中的 `database = "app_db"` 会在读取时兼容迁移为 `databases = ["app_db"]`，保存时统一输出新格式。

@@ -21,8 +21,8 @@ class MySqlExplainRunner:
         if not isinstance(query, SafeSelectQuery):
             raise SafetyError("EXPLAIN requires a SafeSelectQuery.")
         _profile_name, profile_config = self.connection_factory.get_profile_config(profile)
-        if database != profile_config.database:
-            raise SafetyError("EXPLAIN database must match the configured profile database.")
+        if database not in profile_config.databases:
+            raise SafetyError("EXPLAIN database must be configured for the profile.")
         if query.has_placeholders and not query.params:
             return ExplainSummary(status="skipped_missing_params", tables=query.referenced_tables)
         if query.has_placeholders and not _uses_only_pymysql_placeholders(query.sql):
@@ -31,12 +31,12 @@ class MySqlExplainRunner:
                 tables=query.referenced_tables,
             )
         explain_sql = "EXPLAIN " + query.sql.rstrip(";")
-        with self._connection(profile) as connection:
+        with self._connection(profile, database) as connection:
             rows = _fetch_all(connection, explain_sql, tuple(query.params) if query.params else None)
         return _summarize_explain(rows)
 
-    def _connection(self, profile: str):
-        return self.connection_factory.create(profile)
+    def _connection(self, profile: str, database: str):
+        return self.connection_factory.create(profile, database=database)
 
 
 def _fetch_all(connection: object, sql: str, params: tuple | None = None) -> list[dict]:

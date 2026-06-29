@@ -26,7 +26,7 @@ class ConnectionProfile:
     driver: str
     host: str
     port: int
-    database: str
+    databases: list[str]
     username: str
     password: str
     connect_timeout_seconds: int = 5

@@ -7,6 +7,11 @@ from typing import Any, Protocol
 
 from db_lens_mcp.application.database_inspection_service import DatabaseInspectionService
 from db_lens_mcp.application.query_inspection_service import QueryInspectionService
+from db_lens_mcp.application.table_locator_service import (
+    TableLocatorService,
+    TableMappingCache,
+    TableResolutionError,
+)
 from db_lens_mcp.errors import DbLensError
 from db_lens_mcp.domain.risk_rules import RiskRules
 from db_lens_mcp.domain.sql_guard import SqlGuard
@@ -24,17 +29,26 @@ class ToolRegistrar(Protocol):
         """Return the tool decorator."""
 
 
+READ_ONLY_TOOL_ANNOTATIONS = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": True,
+}
+
+
 def register_tools(
     server: ToolRegistrar,
     database_service: DatabaseInspectionService | None = None,
     query_service: QueryInspectionService | None = None,
+    table_locator: TableLocatorService | None = None,
 ) -> None:
     """Register the fixed first-phase MCP tool surface."""
 
     connection_factory = None
+    config_loader = ConfigLoader()
     if database_service is None:
         secret_store = SecretStore()
-        config_loader = ConfigLoader()
         connection_factory = MySqlConnectionFactory(
             config_loader=config_loader,
             secret_store=secret_store,
@@ -56,23 +70,59 @@ def register_tools(
             explain_runner=MySqlExplainRunner(connection_factory=connection_factory),
             metadata_service=database_service,
         )
+    if table_locator is None:
+        table_locator = TableLocatorService(
+            config_loader=config_loader,
+            database_service=database_service,
+            cache=TableMappingCache.for_config(),
+        )
+
+    @server.tool(annotations=READ_ONLY_TOOL_ANNOTATIONS)
+    def list_profiles() -> dict[str, Any]:
+        """List configured connection profiles without secrets."""
+
+        try:
+            return {"profiles": table_locator.list_profiles()}
+        except (DbLensError, Exception) as exc:
+            return tool_error("list_profiles", exc)
 
     @server.tool()
-    def list_databases(profile: str) -> dict[str, Any]:
+    def refresh_table_cache(profile: str) -> dict[str, Any]:
+        """Refresh cached table-to-database mappings for a profile."""
+
+        try:
+            return table_locator.refresh_profile(profile)
+        except (DbLensError, Exception) as exc:
+            return tool_error("refresh_table_cache", exc, profile=profile)
+
+    @server.tool(annotations=READ_ONLY_TOOL_ANNOTATIONS)
+    def find_tables(table: str, profile: str | None = None) -> dict[str, Any]:
+        """Find configured databases containing a table name or keyword."""
+
+        try:
+            return table_locator.find_tables(table, profile=profile)
+        except (DbLensError, Exception) as exc:
+            return tool_error("find_tables", exc, profile=profile, table=table)
+
+    @server.tool(annotations=READ_ONLY_TOOL_ANNOTATIONS)
+    def list_databases(profile: str | None = None) -> dict[str, Any]:
         """Get visible databases for a configured profile."""
 
         try:
+            profile_name = profile
+            if profile_name is None:
+                profile_name, _profile_config = table_locator.config_loader.load().resolve_profile(profile)
             return {
-                "profile": profile,
+                "profile": profile_name,
                 "databases": [
                     {"name": name}
-                    for name in database_service.list_databases(profile)
+                    for name in database_service.list_databases(profile_name)
                 ],
             }
-        except DbLensError as exc:
+        except (DbLensError, Exception) as exc:
             return tool_error("list_databases", exc, profile=profile)
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_TOOL_ANNOTATIONS)
     def list_tables(profile: str, database: str, keyword: str | None = None) -> dict[str, Any]:
         """Get tables in a database, optionally filtered by keyword."""
 
@@ -85,15 +135,22 @@ def register_tools(
         except DbLensError as exc:
             return tool_error("list_tables", exc, profile=profile, database=database)
 
-    @server.tool()
-    def describe_table(profile: str, database: str, table: str) -> dict[str, Any]:
+    @server.tool(annotations=READ_ONLY_TOOL_ANNOTATIONS)
+    def describe_table(
+        table: str,
+        profile: str | None = None,
+        database: str | None = None,
+    ) -> dict[str, Any]:
         """Get table columns, primary key, and comments."""
 
         try:
-            schema = database_service.describe_table(profile, database, table)
+            profile_name, database_name = _resolve_table_context(
+                table_locator, table, profile, database
+            )
+            schema = database_service.describe_table(profile_name, database_name, table)
             return {
-                "profile": profile,
-                "database": database,
+                "profile": profile_name,
+                "database": database_name,
                 "table": table,
                 "columns": [
                     {
@@ -109,20 +166,29 @@ def register_tools(
                 "primary_key": schema.primary_key,
                 "comment": schema.comment,
             }
+        except TableResolutionError as exc:
+            return table_resolution_error("describe_table", exc, profile=profile, table=table)
         except DbLensError as exc:
             return tool_error(
                 "describe_table", exc, profile=profile, database=database, table=table
             )
 
-    @server.tool()
-    def list_indexes(profile: str, database: str, table: str) -> dict[str, Any]:
+    @server.tool(annotations=READ_ONLY_TOOL_ANNOTATIONS)
+    def list_indexes(
+        table: str,
+        profile: str | None = None,
+        database: str | None = None,
+    ) -> dict[str, Any]:
         """Get table indexes."""
 
         try:
-            indexes = database_service.list_indexes(profile, database, table)
+            profile_name, database_name = _resolve_table_context(
+                table_locator, table, profile, database
+            )
+            indexes = database_service.list_indexes(profile_name, database_name, table)
             return {
-                "profile": profile,
-                "database": database,
+                "profile": profile_name,
+                "database": database_name,
                 "table": table,
                 "indexes": [
                     {
@@ -135,18 +201,27 @@ def register_tools(
                     for index in indexes
                 ],
             }
+        except TableResolutionError as exc:
+            return table_resolution_error("list_indexes", exc, profile=profile, table=table)
         except DbLensError as exc:
             return tool_error("list_indexes", exc, profile=profile, database=database, table=table)
 
-    @server.tool()
-    def get_table_stats(profile: str, database: str, table: str) -> dict[str, Any]:
+    @server.tool(annotations=READ_ONLY_TOOL_ANNOTATIONS)
+    def get_table_stats(
+        table: str,
+        profile: str | None = None,
+        database: str | None = None,
+    ) -> dict[str, Any]:
         """Get estimated table statistics from metadata."""
 
         try:
-            stats = database_service.get_table_stats(profile, database, table)
+            profile_name, database_name = _resolve_table_context(
+                table_locator, table, profile, database
+            )
+            stats = database_service.get_table_stats(profile_name, database_name, table)
             return {
-                "profile": profile,
-                "database": database,
+                "profile": profile_name,
+                "database": database_name,
                 "table": table,
                 "row_count_estimate": stats.row_count_estimate,
                 "data_length_bytes": stats.data_length_bytes,
@@ -154,24 +229,34 @@ def register_tools(
                 "updated_at": stats.updated_at,
                 "source": stats.source,
             }
+        except TableResolutionError as exc:
+            return table_resolution_error("get_table_stats", exc, profile=profile, table=table)
         except DbLensError as exc:
             return tool_error(
                 "get_table_stats", exc, profile=profile, database=database, table=table
             )
 
-    @server.tool()
-    def explain_select(profile: str, database: str, sql: str) -> dict[str, Any]:
+    @server.tool(annotations=READ_ONLY_TOOL_ANNOTATIONS)
+    def explain_select(
+        sql: str,
+        profile: str | None = None,
+        database: str | None = None,
+    ) -> dict[str, Any]:
         """Run EXPLAIN for a single SELECT query after safety validation."""
 
+        resolved = _resolve_query_context(sql, table_locator, profile, database)
+        if isinstance(resolved, dict):
+            return resolved
+        profile_name, database_name = resolved
         result = query_service.inspect_query(
             sql,
-            profile=profile,
-            database=database,
+            profile=profile_name,
+            database=database_name,
             include_metadata=False,
         )
         return {
-            "profile": profile,
-            "database": database,
+            "profile": profile_name,
+            "database": database_name,
             "accepted": result.accepted,
             "query_type": result.query_type,
             "explain": _explain_response(result.explain_summary),
@@ -180,14 +265,22 @@ def register_tools(
             "risk": result.risk,
         }
 
-    @server.tool()
-    def inspect_query(profile: str, database: str, sql: str) -> dict[str, Any]:
+    @server.tool(annotations=READ_ONLY_TOOL_ANNOTATIONS)
+    def inspect_query(
+        sql: str,
+        profile: str | None = None,
+        database: str | None = None,
+    ) -> dict[str, Any]:
         """Return database context for a single SELECT query."""
 
-        result = query_service.inspect_query(sql, profile=profile, database=database)
+        resolved = _resolve_query_context(sql, table_locator, profile, database)
+        if isinstance(resolved, dict):
+            return resolved
+        profile_name, database_name = resolved
+        result = query_service.inspect_query(sql, profile=profile_name, database=database_name)
         return {
-            "profile": profile,
-            "database": database,
+            "profile": profile_name,
+            "database": database_name,
             "accepted": result.accepted,
             "query_type": result.query_type,
             "referenced_tables": result.referenced_tables,
@@ -211,6 +304,74 @@ def tool_error(tool: str, exc: Exception, **extra: Any) -> dict[str, Any]:
     }
     response.update(extra)
     return response
+
+
+def table_resolution_error(
+    tool: str,
+    exc: TableResolutionError,
+    **extra: Any,
+) -> dict[str, Any]:
+    response = tool_error(tool, exc, **extra)
+    response["risk"] = exc.code
+    if exc.candidates:
+        response["candidates"] = exc.candidates
+    return response
+
+
+def _resolve_table_context(
+    table_locator: TableLocatorService,
+    table: str,
+    profile: str | None,
+    database: str | None,
+) -> tuple[str, str]:
+    if profile and database:
+        return profile, database
+    return table_locator.resolve_table_database(table, profile=profile, database=database)
+
+
+def _resolve_query_context(
+    sql: str,
+    table_locator: TableLocatorService,
+    profile: str | None,
+    database: str | None,
+) -> tuple[str, str] | dict[str, Any]:
+    try:
+        if profile and database:
+            return profile, database
+        safe_query = SqlGuard().validate_select(sql)
+        profile_name, _profile_config = table_locator.config_loader.load().resolve_profile(profile)
+        if database:
+            table_locator.resolve_table_database(
+                safe_query.referenced_tables[0] if safe_query.referenced_tables else "",
+                profile=profile_name,
+                database=database,
+            )
+            return profile_name, database
+        if not safe_query.referenced_tables:
+            return {
+                "accepted": False,
+                "reason": "SQL has no resolvable physical table; specify database explicitly.",
+                "risk": "database_required",
+                "profile": profile_name,
+                "database": None,
+            }
+        resolved_databases = {
+            table_locator.resolve_table_database(table, profile=profile_name)[1]
+            for table in safe_query.referenced_tables
+        }
+        if len(resolved_databases) == 1:
+            return profile_name, next(iter(resolved_databases))
+        return {
+            "accepted": False,
+            "reason": "Referenced tables resolve to multiple databases; specify database explicitly.",
+            "risk": "ambiguous_database",
+            "profile": profile_name,
+            "databases": sorted(resolved_databases),
+        }
+    except TableResolutionError as exc:
+        return table_resolution_error("query_context", exc, profile=profile)
+    except Exception as exc:
+        return tool_error("query_context", exc, profile=profile)
 
 
 def _safe_reason(reason: str | None) -> str | None:

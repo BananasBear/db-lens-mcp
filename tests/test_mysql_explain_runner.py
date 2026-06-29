@@ -10,14 +10,16 @@ class FakeConnectionFactory:
     def __init__(self, connection, database="app_db"):
         self.connection = connection
         self.database = database
+        self.create_calls = []
 
-    def create(self, profile):
+    def create(self, profile, database=None):
+        self.create_calls.append((profile, database))
         return self.connection
 
     def get_profile_config(self, profile):
         return profile, ProfileConfig(
             driver="mysql",
-            database=self.database,
+            databases=[self.database],
             username="readonly",
             password="enc:v1:password",
         )
@@ -125,5 +127,5 @@ def test_explain_runner_rejects_database_mismatch() -> None:
     runner = MySqlExplainRunner(connection_factory=FakeConnectionFactory(connection, database="app_db"))
     query = SafeSelectQuery(sql="select * from orders", referenced_tables=["orders"])
 
-    with pytest.raises(SafetyError, match="must match"):
+    with pytest.raises(SafetyError, match="must be configured"):
         runner.explain("local-dev", "other_db", query)

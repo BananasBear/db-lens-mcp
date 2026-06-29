@@ -7,15 +7,19 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import List, Optional
 
 import typer
 
 from db_lens_mcp import __version__
 from db_lens_mcp.cli.language import Language, message as cli_message, resolve_language
+from db_lens_mcp.application.database_inspection_service import DatabaseInspectionService
+from db_lens_mcp.application.table_locator_service import TableLocatorService, TableMappingCache
 from db_lens_mcp.errors import ConfigurationError, DatabaseAccessError
 from db_lens_mcp.infrastructure.config.config_loader import ConfigLoader, resolve_config_path
 from db_lens_mcp.infrastructure.config.config_models import AppConfig, ProfileConfig
 from db_lens_mcp.infrastructure.mysql.connection_factory import MySqlConnectionFactory
+from db_lens_mcp.infrastructure.mysql.metadata_reader import MySqlMetadataReader
 from db_lens_mcp.infrastructure.secrets.secret_store import SecretStore
 from db_lens_mcp.logging import configure_logging
 
@@ -25,9 +29,11 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 config_app = typer.Typer(help="Manage local database connection profiles.")
+cache_app = typer.Typer(help="Manage local table mapping cache.")
 mcp_app = typer.Typer(help="Run MCP server entry points.")
 
 app.add_typer(config_app, name="config")
+app.add_typer(cache_app, name="cache")
 app.add_typer(mcp_app, name="mcp")
 
 
@@ -60,6 +66,7 @@ def help() -> None:
                 "3. Verify the profile:",
                 "   db-lens config list",
                 "   db-lens config test <profile>",
+                "   db-lens cache refresh <profile>",
                 "",
                 "4. Connect an AI client:",
                 "   db-lens mcp install-codex",
@@ -82,6 +89,33 @@ def help() -> None:
             ]
         )
     )
+
+
+def _echo_parent_help(ctx: typer.Context) -> None:
+    if ctx.parent is None:
+        raise typer.Exit(code=1)
+    typer.echo(ctx.parent.get_help())
+
+
+@config_app.command("help")
+def config_help(ctx: typer.Context) -> None:
+    """Show help for config commands."""
+
+    _echo_parent_help(ctx)
+
+
+@cache_app.command("help")
+def cache_help(ctx: typer.Context) -> None:
+    """Show help for cache commands."""
+
+    _echo_parent_help(ctx)
+
+
+@mcp_app.command("help")
+def mcp_help(ctx: typer.Context) -> None:
+    """Show help for MCP commands."""
+
+    _echo_parent_help(ctx)
 
 
 @app.command()
@@ -118,20 +152,35 @@ def doctor() -> None:
 
 @config_app.command("add")
 def config_add(
-    profile: str | None = typer.Option(None, help="Profile name."),
-    host: str | None = typer.Option(None, help="Database host."),
-    port: int | None = typer.Option(None, help="Database port."),
-    database: str | None = typer.Option(None, help="Database name."),
-    username: str | None = typer.Option(None, help="Database username."),
-    password: str | None = typer.Option(None, help="Database password.", hide_input=True),
+    profile: Optional[str] = typer.Option(None, help="Profile name."),
+    host: Optional[str] = typer.Option(None, help="Database host."),
+    port: Optional[int] = typer.Option(None, help="Database port."),
+    database: Optional[str] = typer.Option(
+        None,
+        help="Deprecated. Single database name; use --databases for multiple databases.",
+    ),
+    databases: Optional[str] = typer.Option(
+        None,
+        help="Comma-separated database names configured for this profile.",
+    ),
+    username: Optional[str] = typer.Option(None, help="Database username."),
+    password: Optional[str] = typer.Option(None, help="Database password.", hide_input=True),
     driver: str = typer.Option("mysql", help="Database driver. First phase supports mysql."),
-    language: str | None = typer.Option(None, help="CLI language: zh or en."),
+    language: Optional[str] = typer.Option(None, help="CLI language: zh or en."),
     skip_test: bool = typer.Option(False, help="Save the profile without testing database access."),
 ) -> None:
     """Add or replace a database profile."""
 
     interactive = any(
-        value is None for value in (profile, host, port, database, username, password)
+        value is None
+        for value in (
+            profile,
+            host,
+            port,
+            databases if databases is not None else database,
+            username,
+            password,
+        )
     )
     language_value = resolve_language(language, prompt_if_missing=interactive)
     _require_supported_driver(driver, language_value)
@@ -142,8 +191,8 @@ def config_add(
         host = typer.prompt(cli_message(language_value, "host_prompt"), default="127.0.0.1")
     if port is None:
         port = typer.prompt(cli_message(language_value, "port_prompt"), default=3306, type=int)
-    if database is None:
-        database = typer.prompt(cli_message(language_value, "database_prompt"))
+    if databases is None and database is None:
+        databases = typer.prompt(cli_message(language_value, "database_prompt"))
     if username is None:
         username = typer.prompt(cli_message(language_value, "username_prompt"))
     if password is None:
@@ -153,7 +202,7 @@ def config_add(
         )
 
     _require_value("profile", profile, language_value)
-    _require_value("database", database, language_value)
+    database_values = _parse_databases(databases if databases is not None else database)
     _require_value("username", username, language_value)
     _require_value("password", password, language_value)
     loader = ConfigLoader()
@@ -167,12 +216,10 @@ def config_add(
         driver=driver,
         host=host,
         port=port,
-        database=database,
+        databases=database_values,
         username=username,
         password=encrypted_password,
     )
-    if not config.default_profile:
-        config.default_profile = profile
     config_path = loader.save(config)
     typer.echo(cli_message(language_value, "saved_profile", profile=profile, path=config_path))
     if skip_test:
@@ -210,26 +257,34 @@ def config_add(
 @config_app.command("update")
 def config_update(
     profile: str,
-    driver: str | None = typer.Option(
+    driver: Optional[str] = typer.Option(
         None,
         help="Database driver. First phase supports mysql.",
     ),
-    host: str | None = typer.Option(None, help="Database host."),
-    port: int | None = typer.Option(None, help="Database port."),
-    database: str | None = typer.Option(None, help="Database name."),
-    username: str | None = typer.Option(None, help="Database username."),
-    password: str | None = typer.Option(
+    host: Optional[str] = typer.Option(None, help="Database host."),
+    port: Optional[int] = typer.Option(None, help="Database port."),
+    database: Optional[str] = typer.Option(
+        None,
+        help="Deprecated. Single database name; use --databases for multiple databases.",
+    ),
+    databases: Optional[str] = typer.Option(
+        None,
+        help="Comma-separated database names configured for this profile.",
+    ),
+    username: Optional[str] = typer.Option(None, help="Database username."),
+    password: Optional[str] = typer.Option(
         None,
         help="New database password. Leave unset to keep the current password.",
         hide_input=True,
     ),
-    language: str | None = typer.Option(None, help="CLI language: zh or en."),
+    language: Optional[str] = typer.Option(None, help="CLI language: zh or en."),
     skip_test: bool = typer.Option(False, help="Save the profile without testing database access."),
 ) -> None:
     """Update an existing database profile."""
 
     interactive = all(
-        value is None for value in (driver, host, port, database, username, password)
+        value is None
+        for value in (driver, host, port, database, databases, username, password)
     )
     language_value = resolve_language(language, prompt_if_missing=interactive)
     loader = ConfigLoader()
@@ -261,7 +316,7 @@ def config_update(
         )
         database = typer.prompt(
             cli_message(language_value, "database_prompt"),
-            default=current_profile.database,
+            default=", ".join(current_profile.databases),
         )
         username = typer.prompt(
             cli_message(language_value, "username_prompt"),
@@ -277,12 +332,14 @@ def config_update(
     driver_value = driver if driver is not None else current_profile.driver
     host_value = host if host is not None else current_profile.host
     port_value = port if port is not None else current_profile.port
-    database_value = database if database is not None else current_profile.database
+    databases_value = _parse_databases(
+        databases if databases is not None else database,
+        fallback=current_profile.databases,
+    )
     username_value = username if username is not None else current_profile.username
 
     _require_supported_driver(driver_value, language_value)
     _require_value("host", host_value, language_value)
-    _require_value("database", database_value, language_value)
     _require_value("username", username_value, language_value)
 
     password_value = current_profile.password
@@ -293,7 +350,7 @@ def config_update(
         driver=driver_value,
         host=host_value,
         port=port_value,
-        database=database_value,
+        databases=databases_value,
         username=username_value,
         password=password_value,
         connect_timeout_seconds=current_profile.connect_timeout_seconds,
@@ -348,11 +405,10 @@ def config_list() -> None:
         return
     for name in sorted(config.profiles):
         profile = config.profiles[name]
-        marker = "*" if name == config.default_profile else "-"
         public = profile.public_dict()
         typer.echo(
-            f"{marker} {name}: {public['driver']}://{public['username']}@"
-            f"{public['host']}:{public['port']}/{public['database']}"
+            f"- {name}: {public['driver']}://{public['username']}@"
+            f"{public['host']}:{public['port']}/{','.join(public['databases'])}"
         )
 
 
@@ -365,7 +421,7 @@ def config_delete(
         "-y",
         help="Delete without asking for confirmation.",
     ),
-    language: str | None = typer.Option(None, help="CLI language: zh or en."),
+    language: Optional[str] = typer.Option(None, help="CLI language: zh or en."),
 ) -> None:
     """Delete an existing database profile."""
 
@@ -392,7 +448,7 @@ def config_delete(
             username=public["username"],
             host=public["host"],
             port=public["port"],
-            database=public["database"],
+            databases=",".join(public["databases"]),
         )
     )
     if not yes and not typer.confirm(
@@ -403,23 +459,8 @@ def config_delete(
         return
 
     del config.profiles[profile]
-    default_message = ""
-    if config.default_profile == profile:
-        remaining_profiles = sorted(config.profiles)
-        config.default_profile = remaining_profiles[0] if remaining_profiles else None
-        if config.default_profile:
-            default_message = cli_message(
-                language_value,
-                "default_profile_set",
-                profile=config.default_profile,
-            )
-        else:
-            default_message = cli_message(language_value, "default_profile_cleared")
-
     config_path = loader.save(config)
     typer.echo(cli_message(language_value, "deleted_profile", profile=profile, path=config_path))
-    if default_message:
-        typer.echo(default_message)
     if config.profiles:
         typer.echo(
             cli_message(
@@ -449,6 +490,23 @@ def config_test(profile: str) -> None:
         raise typer.Exit(code=1) from exc
     typer.echo(f"config_test: ok: {profile_name}")
     typer.echo("database: ok")
+
+
+@cache_app.command("refresh")
+def cache_refresh(profile: str) -> None:
+    """Refresh table-to-database mappings for a profile."""
+
+    try:
+        service = _create_table_locator_service()
+        result = service.refresh_profile(profile)
+    except (ConfigurationError, DatabaseAccessError, KeyError) as exc:
+        typer.echo(f"cache_refresh: failed: {exc}")
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"cache_refresh: ok: {result['profile']}")
+    typer.echo(f"refreshed_at: {result['refreshed_at']}")
+    typer.echo(f"ttl_seconds: {result['ttl_seconds']}")
+    for database in result["databases"]:
+        typer.echo(f"- {database['name']}: {database['table_count']} tables")
 
 
 @mcp_app.command("run")
@@ -646,25 +704,55 @@ def _require_value(name: str, value: str, language: Language = "en") -> None:
         raise typer.BadParameter(cli_message(language, "empty_value", name=name))
 
 
+def _parse_databases(value: Optional[str], fallback: Optional[List[str]] = None) -> List[str]:
+    if value is None:
+        if fallback is not None:
+            return list(fallback)
+        raise typer.BadParameter("databases must not be empty.")
+    databases = [item.strip() for item in value.split(",") if item.strip()]
+    if not databases:
+        raise typer.BadParameter("databases must not be empty.")
+    return databases
+
+
 def _require_supported_driver(driver: str, language: Language = "en") -> None:
     if driver not in {"mysql", "mariadb"}:
         raise typer.BadParameter(cli_message(language, "unsupported_driver"))
 
 
-def _test_database_connection(profile: str | None) -> str:
+def _test_database_connection(profile: Optional[str]) -> str:
     """Open and close a configured database connection without running SQL."""
 
     loader = ConfigLoader()
     secret_store = SecretStore()
-    profile_name, _profile_config = loader.load().get_profile(profile)
-    connection = MySqlConnectionFactory(
+    profile_name, profile_config = loader.load().resolve_profile(profile)
+    connection_factory = MySqlConnectionFactory(
         config_loader=loader,
         secret_store=secret_store,
-    ).create(profile_name)
-    close = getattr(connection, "close", None)
-    if callable(close):
-        close()
+    )
+    for database in profile_config.databases:
+        connection = connection_factory.create(profile_name, database=database)
+        close = getattr(connection, "close", None)
+        if callable(close):
+            close()
     return profile_name
+
+
+def _create_table_locator_service() -> TableLocatorService:
+    loader = ConfigLoader()
+    secret_store = SecretStore()
+    connection_factory = MySqlConnectionFactory(
+        config_loader=loader,
+        secret_store=secret_store,
+    )
+    database_service = DatabaseInspectionService(
+        metadata_reader=MySqlMetadataReader(connection_factory=connection_factory)
+    )
+    return TableLocatorService(
+        config_loader=loader,
+        database_service=database_service,
+        cache=TableMappingCache.for_config(),
+    )
 
 
 def _resolve_db_lens_command() -> str:

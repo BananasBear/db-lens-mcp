@@ -27,6 +27,9 @@ Release requirement: the install URL above must return `200 OK` before this READ
 ## What The AI Can Use
 
 - `list_databases`: list visible databases.
+- `list_profiles`: list configured connection profiles without secrets.
+- `refresh_table_cache`: cache the configured database-to-table mapping.
+- `find_tables`: find which configured database contains a table.
 - `list_tables`: list tables in a database.
 - `describe_table`: read table columns, primary key, and comments.
 - `list_indexes`: read table indexes.
@@ -61,6 +64,7 @@ db-lens config update local-dev
 db-lens config delete old-profile
 db-lens config list
 db-lens config test local-dev
+db-lens cache refresh local-dev
 db-lens mcp install-codex
 db-lens mcp install-claude-code
 db-lens mcp install-trae
@@ -71,6 +75,8 @@ db-lens mcp config --client trae
 db-lens mcp config
 db-lens mcp run  # manual MCP server start, mainly for troubleshooting
 ```
+
+Profiles can include multiple databases. `db-lens` does not use a default database; when an AI asks for a table without a database, the MCP tools use the table cache to resolve the configured database only when the match is unique. The table cache has a long default TTL of 7 days and refreshes automatically only when a table is not found and the cached profile is expired. You can refresh it manually with `db-lens cache refresh <profile>`.
 
 For other agents or MCP clients that are not directly supported yet, run:
 
@@ -128,6 +134,9 @@ db-lens mcp install-codex
 ## AI 可以使用的能力
 
 - 查看数据库列表。
+- 查看已配置的连接 profile。
+- 刷新表到数据库的本地映射缓存。
+- 通过表名查找所在数据库。
 - 查看表列表。
 - 查看表字段、主键和注释。
 - 查看表索引。
@@ -152,6 +161,7 @@ db-lens config update local-dev
 db-lens config delete old-profile
 db-lens config list
 db-lens config test local-dev
+db-lens cache refresh local-dev
 db-lens mcp install-codex
 db-lens mcp install-claude-code
 db-lens mcp install-trae
@@ -162,6 +172,8 @@ db-lens mcp config --client trae
 db-lens mcp config
 db-lens mcp run  # 手动启动 MCP server，主要用于排查问题
 ```
+
+一个 profile 可以配置多个 databases。`db-lens` 不使用默认库；AI 未提供 database 时，MCP 工具只会在表映射缓存唯一命中时自动定位，否则返回歧义让用户确认。表缓存默认 TTL 为 7 天；只有“表未找到且该 profile 缓存已过期”时才自动刷新。也可以手动执行 `db-lens cache refresh <profile>`。
 
 如果你使用的是当前还没有直接支持的 Agent 或 MCP 客户端，可以执行：
 

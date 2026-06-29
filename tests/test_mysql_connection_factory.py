@@ -36,13 +36,12 @@ def test_connection_factory_builds_pymysql_connection(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "pymysql", pymysql_module)
     monkeypatch.setitem(sys.modules, "pymysql.cursors", cursors_module)
     config = AppConfig(
-        default_profile="local-dev",
         profiles={
             "local-dev": ProfileConfig(
                 driver="mysql",
                 host="db.local",
                 port=3307,
-                database="app_db",
+                databases=["app_db"],
                 username="readonly",
                 password="enc:v1:password",
                 connect_timeout_seconds=3,
@@ -56,7 +55,7 @@ def test_connection_factory_builds_pymysql_connection(monkeypatch) -> None:
         import_driver=lambda: (pymysql_module, object),
     )
 
-    connection = factory.create("local-dev")
+    connection = factory.create("local-dev", database="app_db")
 
     assert connection == "connection"
     assert calls == [
@@ -77,11 +76,10 @@ def test_connection_factory_builds_pymysql_connection(monkeypatch) -> None:
 
 def test_connection_factory_rejects_unsupported_driver() -> None:
     config = AppConfig(
-        default_profile="local-dev",
         profiles={
             "local-dev": ProfileConfig(
                 driver="postgres",
-                database="app_db",
+                databases=["app_db"],
                 username="readonly",
                 password="enc:v1:password",
             )
@@ -108,11 +106,10 @@ def test_connection_factory_failure_message_does_not_expose_password(monkeypatch
     monkeypatch.setitem(sys.modules, "pymysql", pymysql_module)
     monkeypatch.setitem(sys.modules, "pymysql.cursors", cursors_module)
     config = AppConfig(
-        default_profile="local-dev",
         profiles={
             "local-dev": ProfileConfig(
                 driver="mysql",
-                database="app_db",
+                databases=["app_db"],
                 username="readonly",
                 password="enc:v1:password",
             )
@@ -133,11 +130,10 @@ def test_connection_factory_failure_message_does_not_expose_password(monkeypatch
 
 def test_connection_factory_reports_missing_pymysql(monkeypatch) -> None:
     config = AppConfig(
-        default_profile="local-dev",
         profiles={
             "local-dev": ProfileConfig(
                 driver="mysql",
-                database="app_db",
+                databases=["app_db"],
                 username="readonly",
                 password="enc:v1:password",
             )

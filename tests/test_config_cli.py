@@ -23,11 +23,24 @@ class FakeMySqlConnectionFactory:
         self.config_loader = config_loader
         self.secret_store = secret_store
 
-    def create(self, profile):
+    def create(self, profile, database=None):
         self.config_loader.load().get_profile(profile)
         connection = FakeConnection()
         self.connections.append(connection)
         return connection
+
+
+class FakeTableLocatorService:
+    def refresh_profile(self, profile):
+        return {
+            "profile": profile,
+            "refreshed_at": "2026-06-29T10:00:00Z",
+            "ttl_seconds": 604800,
+            "databases": [
+                {"name": "app_db", "table_count": 2},
+                {"name": "audit_db", "table_count": 1},
+            ],
+        }
 
 
 def test_config_add_list_and_test_use_encrypted_password(tmp_path: Path, monkeypatch) -> None:
@@ -76,7 +89,7 @@ def test_config_add_list_and_test_use_encrypted_password(tmp_path: Path, monkeyp
     assert "database: ok" in add_result.stdout
     assert "Next: db-lens mcp install-codex" in add_result.stdout
     assert list_result.exit_code == 0
-    assert "* local-dev: mysql://readonly@127.0.0.1:3306/app_db" in list_result.stdout
+    assert "- local-dev: mysql://readonly@127.0.0.1:3306/app_db" in list_result.stdout
     assert "db-password" not in list_result.stdout
     assert test_result.exit_code == 0
     assert "config_test: ok: local-dev" in test_result.stdout
@@ -123,7 +136,7 @@ def test_config_add_interactive_prompts_for_language_and_uses_chinese_copy(
     assert "下一步：db-lens mcp install-codex" in result.stdout
     assert profile.host == "127.0.0.1"
     assert profile.port == 3306
-    assert profile.database == "app_db"
+    assert profile.databases == ["app_db"]
     assert profile.username == "readonly"
     assert secret_store.decrypt(profile.password) == "db-password"
     assert len(FakeMySqlConnectionFactory.connections) == 1
@@ -189,7 +202,7 @@ def test_config_update_interactive_uses_defaults_and_keeps_password(
     assert profile.driver == "mysql"
     assert profile.host == "127.0.0.1"
     assert profile.port == 3307
-    assert profile.database == "app_db_v2"
+    assert profile.databases == ["app_db_v2"]
     assert profile.username == "readonly_v2"
     assert secret_store.decrypt(profile.password) == "db-password"
     assert len(FakeMySqlConnectionFactory.connections) == 2
@@ -261,7 +274,7 @@ def test_config_update_noninteractive_updates_selected_fields_and_can_skip_test(
     assert "下一步：db-lens config test local-dev" in update_result.stdout
     assert profile.host == "db.internal"
     assert profile.port == 3306
-    assert profile.database == "app_db"
+    assert profile.databases == ["app_db"]
     assert profile.username == "readonly"
     assert secret_store.decrypt(profile.password) == "db-password"
     assert FakeMySqlConnectionFactory.connections == []
@@ -382,10 +395,10 @@ def test_config_delete_removes_non_default_profile(tmp_path: Path, monkeypatch) 
     assert "default_profile:" not in delete_result.stdout
     assert "下一步：db-lens config list" in delete_result.stdout
     assert sorted(config.profiles) == ["alpha"]
-    assert config.default_profile == "alpha"
+    assert not hasattr(config, "default_profile")
 
 
-def test_config_delete_reassigns_default_profile_when_deleting_default(
+def test_config_delete_does_not_reassign_default_profile(
     tmp_path: Path, monkeypatch
 ) -> None:
     runner = CliRunner()
@@ -452,12 +465,12 @@ def test_config_delete_reassigns_default_profile_when_deleting_default(
 
     assert delete_result.exit_code == 0
     assert "Deleted profile 'beta'" in delete_result.stdout
-    assert "default_profile: alpha" in delete_result.stdout
+    assert "default_profile:" not in delete_result.stdout
     assert sorted(config.profiles) == ["alpha"]
-    assert config.default_profile == "alpha"
+    assert not hasattr(config, "default_profile")
 
 
-def test_config_delete_clears_default_profile_when_last_profile_is_removed(
+def test_config_delete_last_profile_leaves_no_default_profile(
     tmp_path: Path, monkeypatch
 ) -> None:
     runner = CliRunner()
@@ -503,10 +516,10 @@ def test_config_delete_clears_default_profile_when_last_profile_is_removed(
 
     assert delete_result.exit_code == 0
     assert "Deleted profile 'solo'" in delete_result.stdout
-    assert "default_profile: cleared" in delete_result.stdout
+    assert "default_profile:" not in delete_result.stdout
     assert "Next: db-lens config add" in delete_result.stdout
     assert config.profiles == {}
-    assert config.default_profile is None
+    assert not hasattr(config, "default_profile")
 
 
 def test_config_delete_cancels_when_confirmation_is_rejected(tmp_path: Path, monkeypatch) -> None:
@@ -558,7 +571,7 @@ def test_config_delete_cancels_when_confirmation_is_rejected(tmp_path: Path, mon
     assert "确认删除 profile 'local-dev' 吗？" in delete_result.stdout
     assert "已取消删除。" in delete_result.stdout
     assert sorted(config.profiles) == ["local-dev"]
-    assert config.default_profile == "local-dev"
+    assert not hasattr(config, "default_profile")
 
 
 def test_config_delete_fails_for_missing_profile(tmp_path: Path, monkeypatch) -> None:
@@ -613,6 +626,23 @@ def test_config_test_fails_for_missing_profile(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Configuration file does not exist" in result.stdout
+
+
+def test_cache_refresh_prints_profile_database_counts(monkeypatch) -> None:
+    runner = CliRunner()
+    monkeypatch.setattr(
+        "db_lens_mcp.cli.main._create_table_locator_service",
+        lambda: FakeTableLocatorService(),
+    )
+
+    result = runner.invoke(app, ["cache", "refresh", "local-dev"])
+
+    assert result.exit_code == 0
+    assert "cache_refresh: ok: local-dev" in result.stdout
+    assert "refreshed_at: 2026-06-29T10:00:00Z" in result.stdout
+    assert "ttl_seconds: 604800" in result.stdout
+    assert "- app_db: 2 tables" in result.stdout
+    assert "- audit_db: 1 tables" in result.stdout
 
 
 def test_doctor_reports_config_and_key_status(tmp_path: Path) -> None:

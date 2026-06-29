@@ -20,11 +20,15 @@ class MySqlConnectionFactory:
     secret_store: SecretStore
     import_driver: Callable[[], tuple[object, object]] | None = None
 
-    def create(self, profile: str | None = None) -> object:
+    def create(self, profile: str | None = None, database: str | None = None) -> object:
         """Create a database connection for a profile."""
 
         try:
             profile_name, profile_config = self.get_profile_config(profile)
+            if database is not None and database not in profile_config.databases:
+                raise ConfigurationError(
+                    f"Database {database!r} is not configured for profile {profile_name!r}."
+                )
             password = self.secret_store.decrypt(profile_config.password)
         except ConfigurationError:
             raise
@@ -44,7 +48,7 @@ class MySqlConnectionFactory:
                 port=profile_config.port,
                 user=profile_config.username,
                 password=password,
-                database=profile_config.database,
+                database=database,
                 connect_timeout=profile_config.connect_timeout_seconds,
                 read_timeout=profile_config.read_timeout_seconds,
                 charset="utf8mb4",
@@ -58,7 +62,7 @@ class MySqlConnectionFactory:
         """Return a supported MySQL/MariaDB profile configuration."""
 
         try:
-            profile_name, profile_config = self.config_loader.load().get_profile(profile)
+            profile_name, profile_config = self.config_loader.load().resolve_profile(profile)
         except KeyError as exc:
             raise ConfigurationError(str(exc)) from exc
         if profile_config.driver not in {"mysql", "mariadb"}:

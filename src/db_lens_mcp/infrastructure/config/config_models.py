@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ProfileConfig(BaseModel):
@@ -13,11 +13,22 @@ class ProfileConfig(BaseModel):
     driver: str = "mysql"
     host: str = "127.0.0.1"
     port: int = Field(default=3306, ge=1, le=65535)
-    database: str
+    databases: List[str] = Field(min_length=1)
     username: str
     password: str
     connect_timeout_seconds: int = Field(default=5, ge=1)
     read_timeout_seconds: int = Field(default=10, ge=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_single_database(cls, data: Any) -> Any:
+        """Accept the deprecated single-database shape while loading old configs."""
+
+        if isinstance(data, dict) and "databases" not in data and "database" in data:
+            migrated = dict(data)
+            migrated["databases"] = [migrated.pop("database")]
+            return migrated
+        return data
 
     def public_dict(self) -> dict:
         """Return profile fields that are safe to show in CLI output."""
@@ -26,7 +37,7 @@ class ProfileConfig(BaseModel):
             "driver": self.driver,
             "host": self.host,
             "port": self.port,
-            "database": self.database,
+            "databases": list(self.databases),
             "username": self.username,
             "connect_timeout_seconds": self.connect_timeout_seconds,
             "read_timeout_seconds": self.read_timeout_seconds,
@@ -36,15 +47,23 @@ class ProfileConfig(BaseModel):
 class AppConfig(BaseModel):
     """Top-level TOML config shape."""
 
-    default_profile: Optional[str] = None
     profiles: Dict[str, ProfileConfig] = Field(default_factory=dict)
 
-    def get_profile(self, name: Optional[str] = None) -> tuple[str, ProfileConfig]:
-        """Return the named profile or the configured default profile."""
+    def get_profile(self, name: str) -> tuple[str, ProfileConfig]:
+        """Return the named profile."""
 
-        profile_name = name or self.default_profile
-        if not profile_name:
-            raise KeyError("No profile specified and no default_profile configured.")
-        if profile_name not in self.profiles:
-            raise KeyError(f"Profile {profile_name!r} does not exist.")
-        return profile_name, self.profiles[profile_name]
+        if name not in self.profiles:
+            raise KeyError(f"Profile {name!r} does not exist.")
+        return name, self.profiles[name]
+
+    def resolve_profile(self, name: str | None = None) -> tuple[str, ProfileConfig]:
+        """Return an explicit profile, or the only configured profile if unambiguous."""
+
+        if name:
+            return self.get_profile(name)
+        if len(self.profiles) == 1:
+            profile_name = next(iter(self.profiles))
+            return profile_name, self.profiles[profile_name]
+        if not self.profiles:
+            raise KeyError("No profile configured.")
+        raise KeyError("Multiple profiles are configured; specify profile explicitly.")

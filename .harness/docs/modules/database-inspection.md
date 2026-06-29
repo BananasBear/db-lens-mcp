@@ -2,8 +2,9 @@
 
 ## 核心概念
 
-- Connection Profile：一个数据库连接配置，包含 host、port、database、user、加密后的 password 等。
+- Connection Profile：一个数据库连接身份配置，包含 host、port、databases、user、加密后的 password 等。profile 可以配置多个 databases，不承载默认库语义。
 - Database Catalog：数据库列表和基础元信息。
+- Table Mapping Cache：表到 database 的本地映射缓存，用于让 AI 通过表名快速定位配置库，避免猜测。
 - Table Summary：表名、注释、行数估算、容量估算。
 - Table Schema：字段、类型、是否可空、默认值、主键、注释。
 - Index Summary：索引名、字段顺序、唯一性、索引类型、基数估算。基数来自 MySQL `information_schema.STATISTICS.CARDINALITY`，是估算值，不是精确统计。
@@ -17,6 +18,7 @@
 - 读取表结构、索引、行数和容量估算。
 - 只对 SELECT 执行 EXPLAIN。
 - 根据 SQL 自动识别相关表，返回相关表结构、索引和执行计划组合结果。
+- 根据表映射缓存将表名解析到配置库；同名表或无法命中时返回明确歧义，不自动猜库。
 - 提供基础风险提示，例如全表扫描、未使用索引、扫描行数偏大。
 - 不提供通用 SQL 执行入口。
 
