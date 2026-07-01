@@ -33,13 +33,13 @@ install_uv_if_missing() {
     fail "curl or python3 is required to install uv."
   fi
   export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-  need_command uv || fail "uv was installed but is not on PATH. Add $HOME/.local/bin to PATH and retry."
+  need_command uv || fail "uv was installed, but this installer could not execute it."
 }
 
 install_db_lens() {
   info "Installing ${APP_NAME}..."
   uv tool install --python "$PYTHON_VERSION" --force "$INSTALL_TARGET"
-  DB_LENS_COMMAND="$(resolve_db_lens_command)"
+  resolve_db_lens_command >/dev/null
 }
 
 resolve_db_lens_command() {
@@ -57,7 +57,7 @@ resolve_db_lens_command() {
       return
     fi
   done
-  fail "db-lens was installed, but its executable was not found. Add uv's tool directory to PATH and retry: export PATH=\"\$HOME/.local/bin:\$HOME/.cargo/bin:\$PATH\""
+  fail "db-lens was installed, but this installer could not locate its executable."
 }
 
 print_next_steps() {
@@ -82,11 +82,6 @@ Next steps:
      $DB_LENS_COMMAND mcp handoff
 
 Restart the client you installed after the MCP command completes.
-EOF
-  cat <<'EOF'
-
-If `db-lens` is not found in a new terminal, add uv's tool directory to PATH:
-  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 EOF
 }
 

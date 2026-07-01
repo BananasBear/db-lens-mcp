@@ -230,7 +230,7 @@ The current main path is local MCP stdio usage. Server/team deployment is only r
 
 ### db-lens Not Found
 
-Run the installer again and keep the terminal output. The installer should print an executable `db-lens` path; if it does not print one, or if the printed command still does not work, the installer logic needs to be fixed.
+Run the installer again and keep the terminal output. If `db-lens` still cannot be executed directly after a successful installation, the installer logic needs to be fixed.
 
 ### MCP Client Cannot See db-lens
 
