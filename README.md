@@ -5,9 +5,9 @@ English version: [README.en.md](README.en.md)
 
 ## 简介
 
-`db-lens-mcp` 是一个给后端开发者和 AI 编程工具使用的数据库上下文 MCP 工具。
+`db-lens-mcp` 是一个给后端开发者和 AI 编程工具使用的关系型数据库上下文 MCP 工具。
 
-它让 Codex、Claude Code、Trae 等 AI 编程工具可以安全读取 MySQL / MariaDB 的表结构、索引、容量估算和 SELECT 执行计划，从而在写代码、改 SQL、排查潜在慢查询时获得数据库层上下文。
+它让 Codex、Claude Code、Trae 等 AI 编程工具可以安全读取数据库表结构、索引、容量估算和 SELECT 执行计划，从而在写代码、改 SQL、排查潜在慢查询时获得数据库层上下文。
 
 它不是通用 SQL 客户端，不提供任意 SQL 执行能力，也不会替你改表、建索引或修改数据。
 
@@ -142,7 +142,7 @@ select * from orders where user_id = ? order by created_at desc limit 20
 - 用户手写 `EXPLAIN` 会被拒绝；`EXPLAIN` 只能由工具内部生成。
 - 多语句 SQL 会被拒绝。
 - `INSERT`、`UPDATE`、`DELETE`、DDL、`CALL`、`LOAD DATA`、事务控制等语句会被拒绝。
-- SQL 校验基于 MySQL 方言 AST 解析，不只依赖字符串前缀判断。
+- SQL 校验基于当前适配方言的 AST 解析，不只依赖字符串前缀判断。
 - 带占位符但未提供参数的 SQL，可以返回表结构和索引上下文，但不会为了执行 `EXPLAIN` 编造参数。
 - MCP 返回给 AI 的错误信息会对常见密码、密钥和连接串做脱敏。
 - `config list` 不展示密码、密文或 master key。
@@ -182,6 +182,8 @@ db-lens mcp run
 ## 高级配置
 
 一般用户不需要手写配置文件。需要脚本化、Docker 或服务器预留部署时，可以使用配置文件和环境变量。
+
+当前默认配置示例使用 `mysql` driver，适用于兼容 MySQL 协议 / 方言的关系型数据库。其他数据库方言可在后续版本继续扩展。
 
 配置文件示例：
 

@@ -4,7 +4,7 @@ Default documentation: [README.md](README.md) in Chinese.
 
 ## Introduction
 
-`db-lens-mcp` is a database-context MCP tool for backend developers and AI coding tools. It lets AI tools such as Codex, Claude Code, and Trae safely inspect MySQL / MariaDB schema, indexes, table size estimates, and SELECT execution plans while you write code, review SQL, or investigate slow-query risk.
+`db-lens-mcp` is a relational database context MCP tool for backend developers and AI coding tools. It lets AI tools such as Codex, Claude Code, and Trae safely inspect database schema, indexes, table size estimates, and SELECT execution plans while you write code, review SQL, or investigate slow-query risk.
 
 It is not a general SQL client. It does not expose arbitrary SQL execution, change tables, create indexes, or modify data.
 
@@ -139,7 +139,7 @@ The design is based on "read-only context + allowlisted tools".
 - User-written `EXPLAIN` is rejected; `EXPLAIN` is generated internally by the tool.
 - Multi-statement SQL is rejected.
 - `INSERT`, `UPDATE`, `DELETE`, DDL, `CALL`, `LOAD DATA`, transaction control, and other high-risk statements are rejected.
-- SQL validation uses MySQL-dialect AST parsing, not string-prefix checks.
+- SQL validation uses AST parsing for the currently supported dialect, not string-prefix checks.
 - SQL with placeholders can return schema and index context, but `db-lens-mcp` will not invent parameter values to run `EXPLAIN`.
 - MCP errors returned to AI clients are redacted for common password, key, and connection-string patterns.
 - `config list` does not show passwords, ciphertext, or the master key.
@@ -179,6 +179,8 @@ Notes:
 ## Advanced Configuration
 
 Most users do not need to edit config files manually. Use config files and environment variables for scripting, Docker, or reserved server deployment paths.
+
+The default example uses the `mysql` driver for relational databases compatible with the MySQL protocol / dialect. Other database dialects can be added in future versions.
 
 Config file example:
 
